@@ -8,6 +8,7 @@ import { UserDisplayModule } from './user-display.module';
 import { MediaModule } from '../media/media.module';
 import { EngagementsModule } from '../engagements/engagements.module';
 import { FeedModule } from '../feeds/feed.module';
+import { ModerationModule } from 'src/common/moderation/moderation.module';
 
 @Module({
   controllers: [UserController],
@@ -20,6 +21,7 @@ import { FeedModule } from '../feeds/feed.module';
     MediaModule,
     EngagementsModule,
     FeedModule,
+    ModerationModule,
   ],
 })
 export class UserModule {}

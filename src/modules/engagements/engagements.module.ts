@@ -18,6 +18,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { UserDisplayModule } from '../user/user-display.module';
 import { FeedModule } from '../feeds/feed.module';
 import { AccountActivityModule } from '../account-activity/account-activity.module';
+import { ModerationModule } from 'src/common/moderation/moderation.module';
 
 @Module({
   providers: [
@@ -43,7 +44,8 @@ import { AccountActivityModule } from '../account-activity/account-activity.modu
     UserDisplayModule,
     FeedModule,
     AccountActivityModule,
+    ModerationModule,
   ],
-  exports: [FollowsService, BlocksService],
+  exports: [FollowsService, BlocksService, CommentsService],
 })
 export class EngagementsModule {}

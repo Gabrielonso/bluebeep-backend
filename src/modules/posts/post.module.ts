@@ -10,6 +10,7 @@ import { AccountActivityModule } from '../account-activity/account-activity.modu
 import { NotificationModule } from '../notification/notification.module';
 import { FeedModule } from '../feeds/feed.module';
 import { MediaModule } from '../media/media.module';
+import { ModerationModule } from 'src/common/moderation/moderation.module';
 
 @Module({
   providers: [PostService, PostAnalyticsService],
@@ -20,6 +21,7 @@ import { MediaModule } from '../media/media.module';
     NotificationModule,
     FeedModule,
     MediaModule,
+    ModerationModule,
   ],
 })
 export class PostModule {}

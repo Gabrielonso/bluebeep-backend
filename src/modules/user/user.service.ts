@@ -25,6 +25,13 @@ import { AccountActivityService } from '../account-activity/account-activity.ser
 import { UserDisplayService } from './user-display.service';
 import { MediaDeletionService } from '../media/media-deletion.service';
 import { formatUnknownError } from 'src/common/utils/error.util';
+import { TextModerationPolicyService } from 'src/common/moderation/text-moderation-policy.service';
+import { TextModerationSurface } from 'src/common/moderation/text-moderation.types';
+import {
+  buildBioUpdateFields,
+  moderationSuccessMessage,
+} from 'src/common/moderation/text-moderation.helper';
+import { resolveDisplayBio } from 'src/common/moderation/text-moderation-visibility.util';
 
 @Injectable()
 export class UserService {
@@ -37,6 +44,7 @@ export class UserService {
     private readonly accountActivityService: AccountActivityService,
     private readonly userDisplayService: UserDisplayService,
     private readonly mediaDeletionService: MediaDeletionService,
+    private readonly textModerationPolicy: TextModerationPolicyService,
   ) {
     const alphabet = '0123456789';
     this.nanoid = customAlphabet(alphabet, 16);
@@ -222,6 +230,21 @@ export class UserService {
       const profilePictureChanged =
         updateUserDto.profilePictureUrl != null &&
         updateUserDto.profilePictureUrl !== user.profilePicture;
+      let bioModerationPending = false;
+      let bioUpdateFields: Partial<User> = {};
+
+      if (updateUserDto.bio !== undefined) {
+        const evaluation = await this.textModerationPolicy.evaluateText(
+          updateUserDto.bio,
+          TextModerationSurface.BIO,
+        );
+        bioModerationPending = evaluation.moderationPending;
+        bioUpdateFields = buildBioUpdateFields(
+          evaluation,
+          updateUserDto.bio,
+          user.bio,
+        );
+      }
 
       await this.userRepository.update(userId, {
         ...(updateUserDto.firstName &&
@@ -236,10 +259,7 @@ export class UserService {
           updateUserDto.username !== undefined && {
             username: updateUserDto.username,
           }),
-        ...(updateUserDto.bio &&
-          updateUserDto.bio !== undefined && {
-            bio: updateUserDto.bio,
-          }),
+        ...bioUpdateFields,
         ...(updateUserDto.countryCode &&
           updateUserDto.countryCode !== undefined && {
             countryCode: updateUserDto.countryCode,
@@ -251,7 +271,7 @@ export class UserService {
           updateUserDto.dob !== undefined && {
             dob,
           }),
-      });
+      } as any);
 
       await this.accountActivityService.log({
         userId,
@@ -271,7 +291,13 @@ export class UserService {
 
       return {
         statusCode: HttpStatus.OK,
-        message: 'Successfully updated user',
+        message: moderationSuccessMessage(
+          'Successfully updated user',
+          bioModerationPending,
+        ),
+        data: {
+          moderationPending: bioModerationPending,
+        },
       };
     } catch (error) {
       throw error;
@@ -308,11 +334,15 @@ export class UserService {
           { followerId: authUserId, followingId: id },
         ],
       });
+      const bioDisplay = resolveDisplayBio(user, id, authUserId);
       return {
         statusCode: HttpStatus.OK,
         message: 'Operation successful',
         data: {
           ...user,
+          bio: bioDisplay.bio,
+          bioModerationPending: bioDisplay.bioModerationPending,
+          bioModerationStatus: bioDisplay.bioModerationStatus,
           followersCount,
           followingCount,
           postsCount: posts + ads,
@@ -341,6 +371,8 @@ export class UserService {
           'lastName',
           'username',
           'bio',
+          'bioPending',
+          'bioModerationStatus',
           'countryCode',
           'profilePicture',
           'email',
@@ -380,11 +412,15 @@ export class UserService {
         adRepo.count({ where: { ownerId: id } }),
       ]);
 
+      const bioDisplay = resolveDisplayBio(user, id, id);
       return {
         statusCode: HttpStatus.OK,
         message: 'Operation successful',
         data: {
           ...user,
+          bio: bioDisplay.bio,
+          bioModerationPending: bioDisplay.bioModerationPending,
+          bioModerationStatus: bioDisplay.bioModerationStatus,
           followersCount,
           followingCount,
           postsCount: posts + ads,

@@ -12,6 +12,7 @@ import { AdMedia } from './ads-media.entity';
 import { Gender } from 'src/common/enums/gender.enum';
 import { Media } from 'src/modules/media/entities/media.entity';
 import { ContentPublishStatus } from 'src/modules/media/enums/content-publish-status.enum';
+import { ModerationStatus } from 'src/modules/media/enums/moderation-status.enum';
 
 @Entity('ads')
 export class Ad {
@@ -23,6 +24,23 @@ export class Ad {
 
   @Column({ type: 'text', nullable: true })
   content?: string;
+
+  @Column({ name: 'content_pending', type: 'text', nullable: true })
+  contentPending?: string;
+
+  @Column({
+    name: 'text_moderation_status',
+    type: 'enum',
+    enum: ModerationStatus,
+    nullable: true,
+  })
+  textModerationStatus?: ModerationStatus;
+
+  @Column({ name: 'text_moderation_labels', type: 'jsonb', nullable: true })
+  textModerationLabels?: Record<string, unknown>;
+
+  @Column({ name: 'text_moderated_at', type: 'timestamp', nullable: true })
+  textModeratedAt?: Date;
 
   @Column({ type: 'text', array: true, nullable: true })
   hashtags?: string[];

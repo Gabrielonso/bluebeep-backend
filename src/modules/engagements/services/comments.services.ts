@@ -22,6 +22,16 @@ import {
   collectUserIds,
   resolveUserDisplay,
 } from 'src/modules/user/helpers/user-display.helper';
+import { TextModerationPolicyService } from 'src/common/moderation/text-moderation-policy.service';
+import { TextModerationSurface } from 'src/common/moderation/text-moderation.types';
+import {
+  buildCreateTextFields,
+  moderationSuccessMessage,
+} from 'src/common/moderation/text-moderation.helper';
+import { ModerationStatus } from 'src/modules/media/enums/moderation-status.enum';
+import {
+  resolveDisplayText,
+} from 'src/common/moderation/text-moderation-visibility.util';
 
 @Injectable()
 export class CommentsService {
@@ -31,9 +41,48 @@ export class CommentsService {
     private readonly dataSource: DataSource,
     private readonly notificationDispatcher: NotificationDispatcher,
     private readonly userDisplayService: UserDisplayService,
+    private readonly textModerationPolicy: TextModerationPolicyService,
   ) {}
 
-  private async enrichComments(comments: Comment[]) {
+  private mapCommentForViewer(
+    comment: Comment,
+    viewerId?: string,
+    viewerRole?: string,
+  ): Comment | null {
+    const display = resolveDisplayText(
+      comment,
+      comment.userId,
+      viewerId,
+      viewerRole,
+    );
+
+    if (display.content == null && comment.textModerationStatus) {
+      return null;
+    }
+
+    return {
+      ...comment,
+      content: display.content ?? comment.content,
+      moderationPending: display.moderationPending,
+      textModerationStatus: display.textModerationStatus ?? undefined,
+    } as Comment;
+  }
+
+  private filterCommentsForViewer(
+    comments: Comment[],
+    viewerId?: string,
+    viewerRole?: string,
+  ): Comment[] {
+    return comments
+      .map((comment) => this.mapCommentForViewer(comment, viewerId, viewerRole))
+      .filter((comment): comment is Comment => comment != null);
+  }
+
+  private async enrichComments(
+    comments: Comment[],
+    viewerId?: string,
+    viewerRole?: string,
+  ) {
     const userIds = collectUserIds(
       comments.map((comment) => comment.userId),
       comments.map((comment) => comment.replyToUserId),
@@ -69,31 +118,52 @@ export class CommentsService {
             HttpStatus.NOT_FOUND,
           );
         }
+        const evaluation = await this.textModerationPolicy.evaluateText(
+          dto.content,
+          TextModerationSurface.COMMENT,
+        );
         const comment = manager.create(Comment, {
           ...dto,
           userId,
+          ...buildCreateTextFields(evaluation, dto.content),
         });
 
-        await manager.save(comment);
+        const savedComment = await manager.save(comment);
 
-        await this.incrementCommentCounter(manager, dto.entity, dto.entityId);
+        if (!evaluation.moderationPending) {
+          await this.incrementCommentCounter(manager, dto.entity, dto.entityId);
 
-        await this.notifyFeedComment(
-          manager,
-          dto.entity,
-          dto.entityId,
-          userId,
-          user.username,
+          await this.notifyFeedComment(
+            manager,
+            dto.entity,
+            dto.entityId,
+            userId,
+            user.username,
+          );
+        }
+
+        return successResponse(
+          moderationSuccessMessage(
+            `Successfully commented on ${dto.entity}`,
+            evaluation.moderationPending,
+          ),
+          {
+            commentId: savedComment.id,
+            moderationPending: evaluation.moderationPending,
+          },
         );
-
-        return successResponse(`Successfully commented on ${dto.entity}`);
       });
     } catch (error) {
       throw error;
     }
   }
 
-  async getComments(entity: FeedType, entityId: string) {
+  async getComments(
+    entity: FeedType,
+    entityId: string,
+    viewerId?: string,
+    viewerRole?: string,
+  ) {
     try {
       const comments = await this.commentRepo.find({
         where: {
@@ -105,9 +175,15 @@ export class CommentsService {
         order: { createdAt: 'DESC' },
       });
 
+      const visibleComments = this.filterCommentsForViewer(
+        comments,
+        viewerId,
+        viewerRole,
+      );
+
       return successResponse(
         'Operation successful',
-        await this.enrichComments(comments),
+        await this.enrichComments(visibleComments, viewerId, viewerRole),
       );
     } catch (error) {
       throw error;
@@ -146,7 +222,12 @@ export class CommentsService {
           );
         }
 
-        await commentRepo.save({
+        const evaluation = await this.textModerationPolicy.evaluateText(
+          content,
+          TextModerationSurface.COMMENT,
+        );
+
+        const savedReply = await commentRepo.save({
           entity: repliedComment.entity,
           entityId: repliedComment.entityId,
           parentId,
@@ -154,44 +235,61 @@ export class CommentsService {
           content,
           replyToUserId: repliedComment.userId,
           replyToCommentId: repliedComment.id,
+          ...buildCreateTextFields(evaluation, content),
         });
-        if (repliedComment?.parentId) {
-          await this.incrementCommentReplyCounter(
+
+        if (!evaluation.moderationPending) {
+          if (repliedComment?.parentId) {
+            await this.incrementCommentReplyCounter(
+              manager,
+              repliedComment?.parentId,
+            );
+          }
+
+          if (repliedComment?.id) {
+            await this.incrementCommentReplyCounter(manager, repliedComment?.id);
+          }
+
+          await this.incrementCommentCounter(
             manager,
-            repliedComment?.parentId,
+            repliedComment.entity,
+            repliedComment.entityId,
           );
+
+          await this.notificationDispatcher.notify({
+            event: NotificationEventType.COMMENT_REPLY,
+            recipientId: repliedComment.userId,
+            actorId: userId,
+            context: {
+              actorUsername: user.username,
+              entity: repliedComment.entity,
+              entityId: repliedComment.entityId,
+              commentId: repliedComment.id,
+            },
+          });
         }
 
-        if (repliedComment?.id) {
-          await this.incrementCommentReplyCounter(manager, repliedComment?.id);
-        }
-
-        await this.incrementCommentCounter(
-          manager,
-          repliedComment.entity,
-          repliedComment.entityId,
-        );
-
-        await this.notificationDispatcher.notify({
-          event: NotificationEventType.COMMENT_REPLY,
-          recipientId: repliedComment.userId,
-          actorId: userId,
-          context: {
-            actorUsername: user.username,
-            entity: repliedComment.entity,
-            entityId: repliedComment.entityId,
-            commentId: repliedComment.id,
+        return successResponse(
+          moderationSuccessMessage(
+            'Successfully replied comment',
+            evaluation.moderationPending,
+          ),
+          {
+            commentId: savedReply.id,
+            moderationPending: evaluation.moderationPending,
           },
-        });
-
-        return successResponse('Successfully replied comment');
+        );
       });
     } catch (error) {
       throw error;
     }
   }
 
-  async getRepliesToComment(parentId: string) {
+  async getRepliesToComment(
+    parentId: string,
+    viewerId?: string,
+    viewerRole?: string,
+  ) {
     try {
       const replies = await this.commentRepo.find({
         where: {
@@ -200,9 +298,14 @@ export class CommentsService {
         },
         order: { createdAt: 'ASC' },
       });
+      const visibleReplies = this.filterCommentsForViewer(
+        replies,
+        viewerId,
+        viewerRole,
+      );
       return successResponse(
         'Operation successful',
-        await this.enrichComments(replies),
+        await this.enrichComments(visibleReplies, viewerId, viewerRole),
       );
     } catch (error) {
       throw error;
@@ -253,6 +356,56 @@ export class CommentsService {
     } catch (error) {
       throw error;
     }
+  }
+
+  async finalizePendingComment(comment: Comment, manager: EntityManager) {
+    if (comment.textModerationStatus !== ModerationStatus.PENDING) {
+      return;
+    }
+
+    const user = await manager.getRepository(User).findOne({
+      where: { id: comment.userId },
+      select: ['id', 'username'],
+    });
+
+    if (comment.parentId) {
+      await this.incrementCommentReplyCounter(manager, comment.parentId);
+    }
+
+    if (
+      comment.replyToCommentId &&
+      comment.parentId !== comment.replyToCommentId
+    ) {
+      await this.incrementCommentReplyCounter(
+        manager,
+        comment.replyToCommentId,
+      );
+    }
+
+    await this.incrementCommentCounter(manager, comment.entity, comment.entityId);
+
+    if (comment.replyToCommentId && comment.replyToUserId) {
+      await this.notificationDispatcher.notify({
+        event: NotificationEventType.COMMENT_REPLY,
+        recipientId: comment.replyToUserId,
+        actorId: comment.userId,
+        context: {
+          actorUsername: user?.username,
+          entity: comment.entity,
+          entityId: comment.entityId,
+          commentId: comment.replyToCommentId,
+        },
+      });
+      return;
+    }
+
+    await this.notifyFeedComment(
+      manager,
+      comment.entity,
+      comment.entityId,
+      comment.userId,
+      user?.username,
+    );
   }
 
   private incrementCommentCounter(

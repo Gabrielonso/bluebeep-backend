@@ -24,6 +24,13 @@ import { resolveUserDisplay } from '../user/helpers/user-display.helper';
 import { MediaAttachValidator } from '../media/media-attach.validator';
 import { ContentPublishService } from '../media/content-publish.service';
 import { ContentPublishStatus } from '../media/enums/content-publish-status.enum';
+import { TextModerationPolicyService } from 'src/common/moderation/text-moderation-policy.service';
+import { TextModerationSurface } from 'src/common/moderation/text-moderation.types';
+import {
+  buildCreateTextFields,
+  moderationSuccessMessage,
+} from 'src/common/moderation/text-moderation.helper';
+import { isPublicTextVisible } from 'src/common/moderation/text-moderation-visibility.util';
 import {
   MediaPlaybackPayload,
   MediaUrlResolver,
@@ -58,6 +65,7 @@ export class StatusService {
     private readonly mediaAttachValidator: MediaAttachValidator,
     private readonly contentPublishService: ContentPublishService,
     private readonly mediaUrlResolver: MediaUrlResolver,
+    private readonly textModerationPolicy: TextModerationPolicyService,
   ) {}
 
   private getExpiryDate(hours = 24) {
@@ -65,6 +73,14 @@ export class StatusService {
   }
 
   private isVisibleToViewer(status: Status, viewerId?: string): boolean {
+    if (
+      status.textModerationStatus &&
+      !isPublicTextVisible(status.textModerationStatus) &&
+      status.ownerId !== viewerId
+    ) {
+      return false;
+    }
+
     if (status.publishStatus === ContentPublishStatus.PUBLISHED) {
       return true;
     }
@@ -273,20 +289,38 @@ export class StatusService {
               ? this.contentPublishService.getPendingStatusExpiryDate()
               : this.getExpiryDate(24);
 
+          const trimmedContent = dto.content?.trim() || undefined;
+          const textEvaluation = trimmedContent
+            ? await this.textModerationPolicy.evaluateText(
+                trimmedContent,
+                TextModerationSurface.STATUS,
+              )
+            : null;
+
           const status = statusRepo.create({
             ownerId,
-            content: dto.content?.trim() || undefined,
-            type: dto.content ? StatusType.THOUGHT : StatusType.MEDIA,
+            content: trimmedContent,
+            type: trimmedContent ? StatusType.THOUGHT : StatusType.MEDIA,
             expiresAt,
             publishStatus,
             media: media ?? undefined,
+            ...(textEvaluation && trimmedContent
+              ? buildCreateTextFields(textEvaluation, trimmedContent)
+              : {}),
           });
 
           const savedStatus = await statusRepo.save(status);
-          return successResponse('Successfully created status', {
-            statusId: savedStatus.id,
-            publishStatus: savedStatus.publishStatus,
-          });
+          return successResponse(
+            moderationSuccessMessage(
+              'Successfully created status',
+              textEvaluation?.moderationPending ?? false,
+            ),
+            {
+              statusId: savedStatus.id,
+              publishStatus: savedStatus.publishStatus,
+              moderationPending: textEvaluation?.moderationPending ?? false,
+            },
+          );
         },
       );
     } catch (error) {
