@@ -12,6 +12,10 @@ import { UserDisplayDto } from '../user/types/user-display.types';
 import { GlobalSearchQueryDto } from './dtos/global-search-query.dto';
 import { SearchTypeEnum } from './enums/search-type.enum';
 import { RawFeedRow } from '../feeds/types/feed.types';
+import {
+  textModerationVisibleSql,
+  resolveDisplayBio,
+} from 'src/common/moderation/text-moderation-visibility.util';
 
 type TrendSearchRow = {
   tag: string;
@@ -102,7 +106,7 @@ export class SearchService {
     page: number,
     limit: number,
     viewerId?: string,
-  ): Promise<PaginatedBucket<Partial<User>>> {
+  ): Promise<PaginatedBucket<Record<string, unknown>>> {
     const skip = (page - 1) * limit;
 
     const qb = this.userRepository
@@ -143,7 +147,14 @@ export class SearchService {
     const [data, total] = await qb.getManyAndCount();
 
     return {
-      data,
+      data: data.map((user) => {
+        const bioDisplay = resolveDisplayBio(user, user.id, viewerId);
+        return {
+          ...user,
+          bio: bioDisplay.bio,
+          bioModerationPending: bioDisplay.bioModerationPending,
+        };
+      }),
       currentPage: page,
       totalPages: Math.max(1, Math.ceil(total / limit)),
       total,
@@ -197,6 +208,7 @@ export class SearchService {
         FROM posts p
         WHERE p.is_public = true
           AND p.publish_status = 'published'
+          AND ${textModerationVisibleSql('p')}
           AND (
             p.content ILIKE $1
             OR p.location ILIKE $1
@@ -215,6 +227,7 @@ export class SearchService {
           a.created_at AS "createdAt"
         FROM ads a
         WHERE a.publish_status = 'published'
+          AND ${textModerationVisibleSql('a')}
           AND (
             a.content ILIKE $1
             OR EXISTS (
@@ -246,6 +259,7 @@ export class SearchService {
         SELECT p.id FROM posts p
         WHERE p.is_public = true
           AND p.publish_status = 'published'
+          AND ${textModerationVisibleSql('p')}
           AND (
             p.content ILIKE $1
             OR p.location ILIKE $1
@@ -258,6 +272,7 @@ export class SearchService {
         UNION ALL
         SELECT a.id FROM ads a
         WHERE a.publish_status = 'published'
+          AND ${textModerationVisibleSql('a')}
           AND (
             a.content ILIKE $1
             OR EXISTS (
@@ -303,10 +318,12 @@ export class SearchService {
         FROM posts p
         WHERE p.is_public = true
           AND p.publish_status = 'published'
+          AND ${textModerationVisibleSql('p')}
         UNION ALL
         SELECT unnest(COALESCE(a.hashtags, ARRAY[]::text[])) AS tag, a.created_at AS created_at
         FROM ads a
         WHERE a.publish_status = 'published'
+          AND ${textModerationVisibleSql('a')}
       )
       SELECT
         tag,
@@ -328,10 +345,12 @@ export class SearchService {
         FROM posts p
         WHERE p.is_public = true
           AND p.publish_status = 'published'
+          AND ${textModerationVisibleSql('p')}
         UNION ALL
         SELECT unnest(COALESCE(a.hashtags, ARRAY[]::text[])) AS tag
         FROM ads a
         WHERE a.publish_status = 'published'
+          AND ${textModerationVisibleSql('a')}
       )
       SELECT COUNT(DISTINCT tag)::int AS count
       FROM tags

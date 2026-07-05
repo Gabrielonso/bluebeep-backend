@@ -22,6 +22,12 @@ import { UpdateAdDto } from './dtos/update-ad.dto';
 import { FeedCacheInvalidationService } from '../feeds/feed-cache-invalidation.service';
 import { MediaAttachValidator } from '../media/media-attach.validator';
 import { ContentPublishStatus } from '../media/enums/content-publish-status.enum';
+import { TextModerationPolicyService } from 'src/common/moderation/text-moderation-policy.service';
+import { TextModerationSurface } from 'src/common/moderation/text-moderation.types';
+import {
+  buildTextModerationMeta,
+  moderationSuccessMessage,
+} from 'src/common/moderation/text-moderation.helper';
 
 @Injectable()
 export class AdService {
@@ -31,6 +37,7 @@ export class AdService {
     private readonly dataSource: DataSource,
     private readonly feedCacheInvalidation: FeedCacheInvalidationService,
     private readonly mediaAttachValidator: MediaAttachValidator,
+    private readonly textModerationPolicy: TextModerationPolicyService,
   ) {}
 
   private async safeInvalidateFeedCaches(
@@ -148,6 +155,17 @@ export class AdService {
               soundMedia,
             );
 
+          const textToModerate = this.textModerationPolicy.combineText([
+            dto.topic,
+            dto.description,
+          ]);
+          const textEvaluation = textToModerate
+            ? await this.textModerationPolicy.evaluateText(
+                textToModerate,
+                TextModerationSurface.AD,
+              )
+            : null;
+
           const ad = adRepo.create({
             ownerId: user.id,
             content: dto.description,
@@ -160,6 +178,15 @@ export class AdService {
             status: 'active',
             sound: soundMedia || undefined,
             publishStatus,
+            ...(textEvaluation
+              ? {
+                  ...buildTextModerationMeta(textEvaluation),
+                  textModerationLabels: {
+                    ...textEvaluation.labels,
+                    moderatedText: textToModerate,
+                  },
+                }
+              : {}),
           });
           const savedAd = await adRepo.save(ad);
 
@@ -187,10 +214,17 @@ export class AdService {
           //   new PostCreatedEvent(post.id, userId),
           // );
 
-          return successResponse('Successfully created ad', {
-            adId: savedAd.id,
-            publishStatus: savedAd.publishStatus,
-          });
+          return successResponse(
+            moderationSuccessMessage(
+              'Successfully created ad',
+              textEvaluation?.moderationPending ?? false,
+            ),
+            {
+              adId: savedAd.id,
+              publishStatus: savedAd.publishStatus,
+              moderationPending: textEvaluation?.moderationPending ?? false,
+            },
+          );
         },
       );
       if (
@@ -224,19 +258,57 @@ export class AdService {
       }
 
       const updatePayload: Partial<Ad> = {};
-      if (dto.topic !== undefined) updatePayload.topic = dto.topic;
-      if (dto.description !== undefined)
-        updatePayload.content = dto.description;
+      let moderationPending = false;
+      const nextTopic = dto.topic !== undefined ? dto.topic : ad.topic;
+      const nextContent =
+        dto.description !== undefined ? dto.description : ad.content;
+      const textChanged =
+        dto.topic !== undefined || dto.description !== undefined;
+
       if (dto.hashtags !== undefined)
         updatePayload.hashtags = normalizeHashtags(dto.hashtags);
 
-      await adRepo.update({ id: adId }, updatePayload);
+      if (textChanged) {
+        const textToModerate = this.textModerationPolicy.combineText([
+          nextTopic,
+          nextContent,
+        ]);
+        const evaluation = await this.textModerationPolicy.evaluateText(
+          textToModerate,
+          TextModerationSurface.AD,
+        );
+        moderationPending = evaluation.moderationPending;
+
+        if (evaluation.moderationPending) {
+          Object.assign(updatePayload, {
+            ...buildTextModerationMeta(evaluation),
+            contentPending: textToModerate,
+            textModerationLabels: {
+              ...evaluation.labels,
+              pendingPayload: {
+                topic: nextTopic,
+                content: nextContent,
+              },
+            },
+          });
+        } else {
+          if (dto.topic !== undefined) updatePayload.topic = dto.topic;
+          if (dto.description !== undefined)
+            updatePayload.content = dto.description;
+          Object.assign(updatePayload, buildTextModerationMeta(evaluation));
+        }
+      }
+
+      await adRepo.update({ id: adId }, updatePayload as any);
 
       await this.safeInvalidateFeedCaches(() =>
         this.feedCacheInvalidation.invalidateAdAndPublicList(adId),
       );
 
-      return successResponse('Successfully updated ad');
+      return successResponse(
+        moderationSuccessMessage('Successfully updated ad', moderationPending),
+        { moderationPending },
+      );
     } catch (error) {
       throw error;
     }

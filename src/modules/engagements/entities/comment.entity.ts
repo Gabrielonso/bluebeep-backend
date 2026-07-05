@@ -1,4 +1,5 @@
 import { FeedType } from 'src/modules/feeds/enums/feed-type.enum';
+import { ModerationStatus } from 'src/modules/media/enums/moderation-status.enum';
 import {
   Column,
   CreateDateColumn,
@@ -26,6 +27,20 @@ export class Comment {
 
   @Column({ type: 'text' })
   content: string;
+
+  @Column({
+    name: 'text_moderation_status',
+    type: 'enum',
+    enum: ModerationStatus,
+    nullable: true,
+  })
+  textModerationStatus?: ModerationStatus;
+
+  @Column({ name: 'text_moderation_labels', type: 'jsonb', nullable: true })
+  textModerationLabels?: Record<string, unknown>;
+
+  @Column({ name: 'text_moderated_at', type: 'timestamp', nullable: true })
+  textModeratedAt?: Date;
 
   @Column({ nullable: true, name: 'parent_id', type: 'uuid' })
   parentId?: string;

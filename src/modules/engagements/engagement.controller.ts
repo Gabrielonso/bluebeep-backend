@@ -98,10 +98,12 @@ export class EngagementsController {
 
   @Get('comments')
   @ApiOperation({ summary: 'Get Comments' })
-  getComments(@Query() commentsQueryDto: CommentsQueryDto) {
+  getComments(@Query() commentsQueryDto: CommentsQueryDto, @Req() req) {
     return this.commentsService.getComments(
       commentsQueryDto.entity,
       commentsQueryDto.entityId,
+      req.user?.id,
+      req.user?.role,
     );
   }
 
@@ -129,8 +131,15 @@ export class EngagementsController {
     example: 'fd9391ab-9f91-45ef-87a6-df076bb19d0c',
     name: 'commentId',
   })
-  getRepliesToComments(@Param('commentId', ParseUUIDPipe) commentId: string) {
-    return this.commentsService.getRepliesToComment(commentId);
+  getRepliesToComments(
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Req() req,
+  ) {
+    return this.commentsService.getRepliesToComment(
+      commentId,
+      req.user?.id,
+      req.user?.role,
+    );
   }
 
   @Delete('comments/:commentId')

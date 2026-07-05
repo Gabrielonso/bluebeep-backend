@@ -30,6 +30,13 @@ import { FeedCacheInvalidationService } from '../feeds/feed-cache-invalidation.s
 import { MediaAttachValidator } from '../media/media-attach.validator';
 import { MediaDeletionService } from '../media/media-deletion.service';
 import { ContentPublishStatus } from '../media/enums/content-publish-status.enum';
+import { TextModerationPolicyService } from 'src/common/moderation/text-moderation-policy.service';
+import { TextModerationSurface } from 'src/common/moderation/text-moderation.types';
+import {
+  buildCreateTextFields,
+  buildUpdateTextFields,
+  moderationSuccessMessage,
+} from 'src/common/moderation/text-moderation.helper';
 
 @Injectable()
 export class PostService {
@@ -46,6 +53,7 @@ export class PostService {
     private readonly feedCacheInvalidation: FeedCacheInvalidationService,
     private readonly mediaAttachValidator: MediaAttachValidator,
     private readonly mediaDeletionService: MediaDeletionService,
+    private readonly textModerationPolicy: TextModerationPolicyService,
   ) {}
 
   private async notifyPostTags(
@@ -198,8 +206,14 @@ export class PostService {
               soundMedia,
             );
 
+          const captionEvaluation = dto.caption
+            ? await this.textModerationPolicy.evaluateText(
+                dto.caption,
+                TextModerationSurface.POST,
+              )
+            : null;
+
           const post = postRepo.create({
-            content: dto.caption,
             hashtags: normalizeHashtags(dto.hashtags),
             ownerId: user.id,
             sound: soundMedia || undefined,
@@ -207,6 +221,9 @@ export class PostService {
             isPublic: dto.isPublic ?? true,
             location: dto.location,
             publishStatus,
+            ...(captionEvaluation && dto.caption
+              ? buildCreateTextFields(captionEvaluation, dto.caption)
+              : {}),
           });
           const savedPost = await postRepo.save(post);
 
@@ -278,10 +295,17 @@ export class PostService {
             },
           });
 
-          return successResponse('Successfully created post', {
-            postId: savedPost.id,
-            publishStatus: savedPost.publishStatus,
-          });
+          return successResponse(
+            moderationSuccessMessage(
+              'Successfully created post',
+              captionEvaluation?.moderationPending ?? false,
+            ),
+            {
+              postId: savedPost.id,
+              publishStatus: savedPost.publishStatus,
+              moderationPending: captionEvaluation?.moderationPending ?? false,
+            },
+          );
         },
       );
       if (
@@ -313,7 +337,18 @@ export class PostService {
       }
 
       const updatePayload: Partial<Post> = {};
-      if (dto.caption !== undefined) updatePayload.content = dto.caption;
+      let moderationPending = false;
+      if (dto.caption !== undefined) {
+        const evaluation = await this.textModerationPolicy.evaluateText(
+          dto.caption,
+          TextModerationSurface.POST,
+        );
+        Object.assign(
+          updatePayload,
+          buildUpdateTextFields(evaluation, dto.caption, post.content),
+        );
+        moderationPending = evaluation.moderationPending;
+      }
       if (dto.hashtags !== undefined)
         updatePayload.hashtags = normalizeHashtags(dto.hashtags);
       if (dto.allowComments !== undefined)
@@ -321,7 +356,7 @@ export class PostService {
       if (dto.isPublic !== undefined) updatePayload.isPublic = dto.isPublic;
       if (dto.location !== undefined) updatePayload.location = dto.location;
 
-      await this.postRepo.update({ id: postId }, updatePayload);
+      await this.postRepo.update({ id: postId }, updatePayload as any);
 
       if (dto.tags?.length) {
         await this.dataSource.transaction(async (manager) => {
@@ -378,7 +413,10 @@ export class PostService {
         this.feedCacheInvalidation.invalidatePostAndPublicList(postId),
       );
 
-      return successResponse('Successfully updated post');
+      return successResponse(
+        moderationSuccessMessage('Successfully updated post', moderationPending),
+        { moderationPending },
+      );
     } catch (error) {
       throw error;
     }

@@ -47,6 +47,7 @@ import { Media } from 'src/modules/media/entities/media.entity';
 import { PostMedia } from '../posts/entities/post-media.entity';
 import { FeedRankingService } from './feed-ranking.service';
 import { FEED_RANKING, FeedPoolSource } from './feed-ranking.config';
+import { textModerationVisibleSql } from 'src/common/moderation/text-moderation-visibility.util';
 
 @Injectable()
 export class FeedService {
@@ -345,6 +346,7 @@ export class FeedService {
       WHERE p.owner_id = ANY($1)
         AND p.is_public = true
         AND p.publish_status = 'published'
+        AND ${textModerationVisibleSql('p')}
       ORDER BY p.created_at DESC
       LIMIT $2
       `,
@@ -373,6 +375,7 @@ export class FeedService {
       FROM posts p
       WHERE p.is_public = true
         AND p.publish_status = 'published'
+        AND ${textModerationVisibleSql('p')}
         AND (
           p.owner_id = $1
           OR cardinality($2::uuid[]) = 0
@@ -409,6 +412,7 @@ export class FeedService {
           ON f.follower_id = $1 AND f.following_id = r.user_id
         INNER JOIN posts p ON p.id = r.post_id
           AND p.is_public = true AND p.publish_status = 'published'
+          AND ${textModerationVisibleSql('p')}
         WHERE r.created_at > NOW() - make_interval(days => $3)
       )
       SELECT DISTINCT ON (post_id)
@@ -443,6 +447,7 @@ export class FeedService {
         a.owner_id AS "ownerId"
       FROM ads a
       WHERE a.publish_status = 'published'
+        AND ${textModerationVisibleSql('a')}
       ORDER BY a.created_at DESC
       LIMIT $1
       `,
@@ -893,6 +898,7 @@ export class FeedService {
         FROM posts p
         WHERE p.is_public = true
           AND p.publish_status = 'published'
+        AND ${textModerationVisibleSql('p')}
           AND (
             $2::timestamp IS NULL
             OR (p.created_at, p.id) < ($2::timestamp, $3::uuid)
@@ -908,6 +914,7 @@ export class FeedService {
           a.created_at AS "createdAt"
         FROM ads a
         WHERE a.publish_status = 'published'
+        AND ${textModerationVisibleSql('a')}
           AND (
           $2::timestamp IS NULL
           OR (a.created_at, a.id) < ($2::timestamp, $3::uuid)
@@ -1214,7 +1221,7 @@ export class FeedService {
           NULL::uuid AS "repostedById"
         FROM posts p
         WHERE p.owner_id = $3
-          AND ($4::boolean = true OR (p.is_public = true AND p.publish_status = 'published'))
+          AND ($4::boolean = true OR (p.is_public = true AND p.publish_status = 'published' AND ${textModerationVisibleSql('p')}))
       )
       UNION ALL
       (
@@ -1224,7 +1231,7 @@ export class FeedService {
           a.created_at AS "createdAt",
           NULL::uuid AS "repostedById"
         FROM ads a WHERE a.owner_id = $3
-          AND ($4::boolean = true OR a.publish_status = 'published')
+          AND ($4::boolean = true OR (a.publish_status = 'published' AND ${textModerationVisibleSql('a')}))
       )
       UNION ALL
       (
@@ -1238,7 +1245,7 @@ export class FeedService {
           AND EXISTS (
             SELECT 1 FROM posts p2
             WHERE p2.id = r.post_id
-              AND ($4::boolean = true OR (p2.is_public = true AND p2.publish_status = 'published'))
+              AND ($4::boolean = true OR (p2.is_public = true AND p2.publish_status = 'published' AND ${textModerationVisibleSql('p2')}))
           )
       )
       ORDER BY "createdAt" DESC
@@ -1248,16 +1255,16 @@ export class FeedService {
     );
     const totalRows: Array<{ count: string }> = await this.dataSource.query(
       `SELECT COUNT(*) FROM (
-  SELECT id FROM posts WHERE owner_id = $1 AND ($2::boolean = true OR (is_public = true AND publish_status = 'published'))
+  SELECT id FROM posts WHERE owner_id = $1 AND ($2::boolean = true OR (is_public = true AND publish_status = 'published' AND ${textModerationVisibleSql()}))
   UNION ALL
-  SELECT id FROM ads WHERE owner_id = $1 AND ($2::boolean = true OR publish_status = 'published')
+  SELECT id FROM ads WHERE owner_id = $1 AND ($2::boolean = true OR (publish_status = 'published' AND ${textModerationVisibleSql()}))
   UNION ALL
   SELECT r.post_id AS id FROM reposts r
   WHERE r.user_id = $1
     AND EXISTS (
       SELECT 1 FROM posts p2
       WHERE p2.id = r.post_id
-        AND ($2::boolean = true OR (p2.is_public = true AND p2.publish_status = 'published'))
+        AND ($2::boolean = true OR (p2.is_public = true AND p2.publish_status = 'published' AND ${textModerationVisibleSql('p2')}))
     )
 ) t`,
       [userId, canViewAllPosts],
@@ -1301,6 +1308,7 @@ export class FeedService {
               WHERE p.id = t.entity_id::uuid
                 AND p.is_public = true
                 AND p.publish_status = 'published'
+        AND ${textModerationVisibleSql('p')}
             )
           )
       ORDER BY "createdAt" DESC
@@ -1325,6 +1333,7 @@ export class FeedService {
               WHERE p.id = t.entity_id::uuid
                 AND p.is_public = true
                 AND p.publish_status = 'published'
+        AND ${textModerationVisibleSql('p')}
             )
           )
           ) t`,
@@ -1360,6 +1369,7 @@ export class FeedService {
               WHERE p.id = t.entity_id::uuid
                 AND p.is_public = true
                 AND p.publish_status = 'published'
+        AND ${textModerationVisibleSql('p')}
             )
           )
       ORDER BY "createdAt" DESC
@@ -1384,6 +1394,7 @@ export class FeedService {
               WHERE p.id = t.entity_id::uuid
                 AND p.is_public = true
                 AND p.publish_status = 'published'
+        AND ${textModerationVisibleSql('p')}
             )
           )
           ) t`,

@@ -10,12 +10,14 @@ import { User } from '../user/entity/user.entity';
 import { Follow } from '../engagements/entities/follow.entity';
 import { UserDisplayModule } from '../user/user-display.module';
 import { MediaModule } from '../media/media.module';
+import { ModerationModule } from 'src/common/moderation/moderation.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Status, StatusView, Media, User, Follow]),
     UserDisplayModule,
     MediaModule,
+    ModerationModule,
   ],
   controllers: [StatusController],
   providers: [StatusService, StatusCleanupService],

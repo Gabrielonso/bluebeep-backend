@@ -18,6 +18,7 @@ import {
   UserVisibilityOptions,
 } from '../interfaces/user.interfaces';
 import { UserRoles } from 'src/common/enums/user-roles.constants';
+import { ModerationStatus } from 'src/modules/media/enums/moderation-status.enum';
 import { ChatParticipant } from 'src/modules/chats/entities/chat-participant.entity';
 
 const ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -64,6 +65,23 @@ export class User {
 
   @Column({ name: 'bio', type: 'text', nullable: true })
   bio: string;
+
+  @Column({ name: 'bio_pending', type: 'text', nullable: true })
+  bioPending?: string;
+
+  @Column({
+    name: 'bio_moderation_status',
+    type: 'enum',
+    enum: ModerationStatus,
+    nullable: true,
+  })
+  bioModerationStatus?: ModerationStatus;
+
+  @Column({ name: 'bio_moderation_labels', type: 'jsonb', nullable: true })
+  bioModerationLabels?: Record<string, unknown>;
+
+  @Column({ name: 'bio_moderated_at', type: 'timestamp', nullable: true })
+  bioModeratedAt?: Date;
 
   @Column({ name: 'country_code', type: 'text', nullable: true })
   countryCode: string;
