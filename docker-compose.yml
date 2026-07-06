@@ -1,7 +1,7 @@
 services:
   bluebeep-api:
     build: .
-    container_name: bluebeep
+    container_name: bluebeep-api
     restart: always
     env_file:
       - .env
@@ -15,7 +15,7 @@ services:
     image: redis:latest
     command: redis-server --requirepass ${REDIS_PASSWORD}
     restart: always
-    container_name: redis
+    container_name: bluebeep-redis
     ports:
       - '6379:6379'
     expose:

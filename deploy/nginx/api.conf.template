@@ -1,4 +1,4 @@
-# nginx reverse proxy for the NestJS API (host install, not Docker).
+# nginx reverse proxy for the Bluebeep API (host install, not Docker).
 #
 # Setup on EC2:
 #   1. Replace API_DOMAIN below (e.g. api.example.com).
@@ -21,7 +21,7 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
-upstream nest_api {
+upstream bluebeep_api {
     server 127.0.0.1:4001;
     keepalive 32;
 }
@@ -66,11 +66,11 @@ server {
     proxy_read_timeout 3600s;
 
     location / {
-        proxy_pass http://nest_api;
+        proxy_pass http://bluebeep_api;
     }
 
-    # Socket.IO (NestJS WebSocket gateway)
+    # Socket.IO (WebSocket gateway)
     location /socket.io/ {
-        proxy_pass http://nest_api;
+        proxy_pass http://bluebeep_api;
     }
 }

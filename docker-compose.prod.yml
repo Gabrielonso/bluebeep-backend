@@ -1,5 +1,5 @@
 services:
-  api:
+  bluebeep-api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -13,14 +13,14 @@ services:
       redis:
         condition: service_started
     networks:
-      - app-network
+      - bluebeep-network
     volumes:
       # Mount RDS CA bundle for DB_SSL=/certs/rds-ca.pem
       - ${RDS_CA_HOST_PATH:-./certs}:/certs:ro
 
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: bluebeep-redis
     restart: unless-stopped
     env_file:
       - .env
@@ -32,10 +32,10 @@ services:
     volumes:
       - redis-data:/data
     networks:
-      - app-network
+      - bluebeep-network
 
 networks:
-  app-network:
+  bluebeep-network:
     driver: bridge
 
 volumes:
