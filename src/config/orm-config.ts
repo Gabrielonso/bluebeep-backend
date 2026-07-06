@@ -1,6 +1,6 @@
 import { DataSourceOptions } from 'typeorm';
 import * as dotenv from 'dotenv';
-
+import * as fs from 'fs';
 import { User } from '../modules/user/entity/user.entity';
 import { Post } from 'src/modules/posts/entities/post.entity';
 import { PostView } from 'src/modules/posts/entities/post-view.entity';
@@ -40,7 +40,9 @@ export const ormConfig: DataSourceOptions = {
       ? false
       : {
           rejectUnauthorized: true,
-          ca: process.env.DB_SSL,
+          ca: process.env.DB_SSL
+            ? fs.readFileSync(process.env.DB_SSL, 'utf8')
+            : undefined,
         },
   synchronize: process.env.DB_SYNCHRONIZATION === 'true',
   logging: process.env.DB_LOGGING === 'true',
