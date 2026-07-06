@@ -53,7 +53,7 @@ export class SeederService implements OnApplicationBootstrap {
         const hashedPassword = await hash(password, 10);
         const createAdminUser = await userRepo.create({
           firstName: 'Admin',
-          lastName: 'Social',
+          lastName: 'Bluebeep',
           email,
           password: hashedPassword,
           role: UserRoles.SUPER_ADMIN,

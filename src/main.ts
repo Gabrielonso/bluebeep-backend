@@ -37,6 +37,6 @@ async function bootstrap() {
   app.setGlobalPrefix('v1');
   ConfigureSwagger(app);
   await app.listen(port);
-  console.log(`Social project ${env} is up and running on port: ${port}!`);
+  console.log(`Bluebeep ${env} is up and running on port: ${port}!`);
 }
 bootstrap();

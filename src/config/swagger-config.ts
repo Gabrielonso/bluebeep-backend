@@ -3,8 +3,8 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 export const ConfigureSwagger = (app: INestApplication) => {
   const config = new DocumentBuilder()
-    .setTitle('Social Project APIs')
-    .setDescription(`API for Social Project...`)
+    .setTitle('Bluebeep APIs')
+    .setDescription('API for Bluebeep')
     .addBearerAuth()
     .setVersion('1.0')
     .build();
@@ -19,6 +19,6 @@ export const ConfigureSwagger = (app: INestApplication) => {
       persistAuthorization: true,
       filter: true,
     },
-    customSiteTitle: 'Social project api Docs',
+    customSiteTitle: 'Bluebeep API Docs',
   });
 };
