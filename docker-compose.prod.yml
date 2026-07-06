@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bluebeep-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - '127.0.0.1:4001:4001'
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - app-network
+    volumes:
+      # Mount RDS CA bundle for DB_SSL=/certs/rds-ca.pem
+      - ${RDS_CA_HOST_PATH:-./certs}:/certs:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis-data:
