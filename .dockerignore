@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.git
+.github
+.env
+.env.*
+!.env.example
+*.md
+test
+**/*spec.ts
+**/.DS_Store
+deploy/nginx/*.conf
+terminals
