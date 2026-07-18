@@ -28,6 +28,18 @@ import { Status } from 'src/modules/status/entities/status.entity';
 import { StatusView } from 'src/modules/status/entities/status-view.entity';
 import { CallSession } from 'src/modules/calls/entities/call-session.entity';
 dotenv.config();
+
+// DB_SSL can hold either the PEM certificate itself or a path to a .pem file
+function resolveDbSslCa(): string | undefined {
+  const value = process.env.DB_SSL;
+  if (!value) return undefined;
+  if (value.includes('-----BEGIN CERTIFICATE-----')) {
+    // Support certs stored in env vars with literal "\n" escapes
+    return value.replace(/\\n/g, '\n');
+  }
+  return fs.readFileSync(value, 'utf8');
+}
+
 export const ormConfig: DataSourceOptions = {
   type: 'postgres',
   host: process.env.DB_HOST,
@@ -40,9 +52,7 @@ export const ormConfig: DataSourceOptions = {
       ? false
       : {
           rejectUnauthorized: true,
-          ca: process.env.DB_SSL
-            ? fs.readFileSync(process.env.DB_SSL, 'utf8')
-            : undefined,
+          ca: resolveDbSslCa(),
         },
   synchronize: process.env.DB_SYNCHRONIZATION === 'true',
   logging: process.env.DB_LOGGING === 'true',
