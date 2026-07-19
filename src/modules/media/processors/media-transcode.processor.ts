@@ -19,6 +19,7 @@ import { MediaStatus } from '../enums/media-status.enum';
 import { MediaType } from '../enums/media-type.enum';
 import { MediaProvider } from '../enums/media-provider.enum';
 import { ContentPublishService } from '../content-publish.service';
+import { assertMediaUpdated } from '../media-update.util';
 import { getS3Bucket, getS3Client } from 'src/common/s3/s3.client';
 import { S3Provider } from 'src/common/s3/s3.provider';
 
@@ -65,7 +66,13 @@ export class MediaTranscodeProcessor extends WorkerHost {
     if (this.isTranscodeComplete(media)) {
       this.logger.log(`Transcode already complete for ${media.id}, skipping`);
       if (media.status !== MediaStatus.READY) {
-        await this.mediaRepo.update(media.id, { status: MediaStatus.READY });
+        const ready = await this.mediaRepo.update(media.id, {
+          status: MediaStatus.READY,
+        });
+        assertMediaUpdated(ready, media.id, 'transcode skip → ready');
+        this.logger.log(
+          `media lifecycle mediaId=${media.id} processing→ready`,
+        );
         await this.contentPublishService.onMediaEnriched(media.id);
       }
       return;
@@ -87,7 +94,11 @@ export class MediaTranscodeProcessor extends WorkerHost {
         return;
       }
 
-      await this.mediaRepo.update(media.id, { status: MediaStatus.READY });
+      const ready = await this.mediaRepo.update(media.id, {
+        status: MediaStatus.READY,
+      });
+      assertMediaUpdated(ready, media.id, 'transcode → ready');
+      this.logger.log(`media lifecycle mediaId=${media.id} processing→ready`);
       await this.contentPublishService.onMediaEnriched(media.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -100,7 +111,13 @@ export class MediaTranscodeProcessor extends WorkerHost {
           `Transcode job errored after output was written for ${media.id}: ${message}`,
         );
         if (fresh.status !== MediaStatus.READY) {
-          await this.mediaRepo.update(media.id, { status: MediaStatus.READY });
+          const ready = await this.mediaRepo.update(media.id, {
+            status: MediaStatus.READY,
+          });
+          assertMediaUpdated(ready, media.id, 'transcode recovery → ready');
+          this.logger.log(
+            `media lifecycle mediaId=${media.id} processing→ready`,
+          );
           await this.contentPublishService.onMediaEnriched(media.id);
         }
         return;

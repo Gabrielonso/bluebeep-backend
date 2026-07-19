@@ -11,8 +11,16 @@ import { ModerationStatus } from '../enums/moderation-status.enum';
 import { MediaModerationService } from 'src/common/moderation/media-moderation.service';
 import { ModerationPolicyService } from 'src/common/moderation/moderation-policy.service';
 import { ContentPublishService } from '../content-publish.service';
+import { assertMediaUpdated } from '../media-update.util';
 
-@Processor(MEDIA_MODERATION_QUEUE)
+/** BullMQ default lock is 30s — video Rekognition can poll ~5 minutes. */
+const MODERATION_WORKER_OPTIONS = {
+  lockDuration: 600_000,
+  stalledInterval: 120_000,
+  maxStalledCount: 2,
+} as const;
+
+@Processor(MEDIA_MODERATION_QUEUE, MODERATION_WORKER_OPTIONS)
 export class MediaModerationProcessor extends WorkerHost {
   private readonly logger = new Logger(MediaModerationProcessor.name);
 
@@ -37,51 +45,71 @@ export class MediaModerationProcessor extends WorkerHost {
     });
 
     if (!media) {
+      this.logger.warn(
+        `Moderation job for missing media ${job.data.mediaId}, completing without update`,
+      );
       return;
     }
 
     if (!this.moderationPolicy.shouldModerate(media)) {
-      await this.mediaRepo.update(media.id, {
+      const skipped = await this.mediaRepo.update(media.id, {
         moderationStatus: ModerationStatus.SKIPPED,
       });
-      await this.pipelineService.enqueueTranscode(media.id);
+      assertMediaUpdated(skipped, media.id, 'moderation → skipped');
+      this.logger.log(
+        `media lifecycle mediaId=${media.id} moderating→skipped`,
+      );
       await this.contentPublishService.onMediaTerminalUpdate(media.id);
+      await this.pipelineService.enqueueTranscode(media.id);
       return;
     }
 
+    let result: Awaited<ReturnType<MediaModerationService['moderate']>>;
     try {
-      const result = await this.moderationService.moderate(media);
-
-      if (!result.passed) {
-        await this.mediaRepo.update(media.id, {
-          status: MediaStatus.REJECTED,
-          moderationStatus: ModerationStatus.REJECTED,
-          moderationLabels: result.labels as Record<string, any>,
-          rejectionReason: result.rejectionReason,
-          moderatedAt: new Date(),
-        });
-        await this.contentPublishService.onMediaTerminalUpdate(media.id);
-        return;
-      }
-
-      await this.mediaRepo.update(media.id, {
-        moderationStatus: ModerationStatus.PASSED,
-        moderationLabels: result.labels as Record<string, any>,
-        moderatedAt: new Date(),
-      });
-      await this.pipelineService.enqueueTranscode(media.id);
-      await this.contentPublishService.onMediaTerminalUpdate(media.id);
+      result = await this.moderationService.moderate(media);
     } catch (error) {
       this.logger.error(
         `Moderation failed for ${media.id}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      await this.mediaRepo.update(media.id, {
+      const failed = await this.mediaRepo.update(media.id, {
         status: MediaStatus.FAILED,
+        moderationStatus: ModerationStatus.PENDING,
         rejectionReason:
           error instanceof Error ? error.message : 'Moderation failed',
       });
+      assertMediaUpdated(failed, media.id, 'moderation → failed');
+      this.logger.log(
+        `media lifecycle mediaId=${media.id} moderating→failed`,
+      );
       await this.contentPublishService.onMediaTerminalUpdate(media.id);
       throw error;
     }
+
+    if (!result.passed) {
+      const rejected = await this.mediaRepo.update(media.id, {
+        status: MediaStatus.REJECTED,
+        moderationStatus: ModerationStatus.REJECTED,
+        moderationLabels: result.labels as Record<string, any>,
+        rejectionReason: result.rejectionReason,
+        moderatedAt: new Date(),
+      });
+      assertMediaUpdated(rejected, media.id, 'moderation → rejected');
+      this.logger.log(
+        `media lifecycle mediaId=${media.id} moderating→rejected`,
+      );
+      await this.contentPublishService.onMediaTerminalUpdate(media.id);
+      return;
+    }
+
+    const passed = await this.mediaRepo.update(media.id, {
+      moderationStatus: ModerationStatus.PASSED,
+      moderationLabels: result.labels as Record<string, any>,
+      moderatedAt: new Date(),
+    });
+    assertMediaUpdated(passed, media.id, 'moderation → passed');
+    this.logger.log(`media lifecycle mediaId=${media.id} moderating→passed`);
+    // Publish before transcode so enqueue failures cannot leave content pending.
+    await this.contentPublishService.onMediaTerminalUpdate(media.id);
+    await this.pipelineService.enqueueTranscode(media.id);
   }
 }

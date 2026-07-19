@@ -12,6 +12,7 @@ import { MediaStorageRegistry } from 'src/common/media/media-storage.registry';
 import { MediaUrlResolver } from 'src/common/media/media-url.resolver';
 import { ModerationModule } from 'src/common/moderation/moderation.module';
 import { MediaPipelineService } from './media-pipeline.service';
+import { MediaPipelineReconcilerService } from './media-pipeline-reconciler.service';
 import { MediaAttachValidator } from './media-attach.validator';
 import { MediaUsageService } from './media-usage.service';
 import { MediaDeletionService } from './media-deletion.service';
@@ -81,6 +82,7 @@ import { MediaCancelProcessor } from './processors/media-cancel.processor';
     },
     MediaService,
     MediaPipelineService,
+    MediaPipelineReconcilerService,
     MediaAttachValidator,
     MediaUsageService,
     MediaDeletionService,

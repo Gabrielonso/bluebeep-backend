@@ -14,9 +14,12 @@ import { ModerationPolicyService } from 'src/common/moderation/moderation-policy
 import { S3Provider } from 'src/common/s3/s3.provider';
 import { MediaProvider } from './enums/media-provider.enum';
 import { ContentPublishService } from './content-publish.service';
+import { assertMediaUpdated } from './media-update.util';
 
 export const MEDIA_JOB_MODERATE = 'moderate';
 export const MEDIA_JOB_TRANSCODE = 'transcode';
+
+const ACTIVE_JOB_STATES = ['waiting', 'delayed', 'active'] as const;
 
 @Injectable()
 export class MediaPipelineService {
@@ -60,41 +63,96 @@ export class MediaPipelineService {
     }
 
     const originalUrl = this.s3Provider.getPublicUrl(media.sourceIdOrKey);
-    await this.mediaRepo.update(mediaId, {
+    const uploaded = await this.mediaRepo.update(mediaId, {
       status: MediaStatus.UPLOADED,
       originalUrl,
     });
+    assertMediaUpdated(uploaded, mediaId, 'routeAfterUpload → uploaded');
+    this.logger.log(`media lifecycle mediaId=${mediaId} → uploaded`);
 
     if (this.moderationPolicy.shouldModerate(media)) {
-      await this.mediaRepo.update(mediaId, {
+      const moderating = await this.mediaRepo.update(mediaId, {
         moderationStatus: ModerationStatus.PENDING,
         status: MediaStatus.MODERATING,
       });
-      await this.moderationQueue.add(MEDIA_JOB_MODERATE, { mediaId });
-      this.logger.log(`Enqueued moderation for media ${mediaId}`);
+      assertMediaUpdated(moderating, mediaId, 'routeAfterUpload → moderating');
+      this.logger.log(
+        `media lifecycle mediaId=${mediaId} uploaded→moderating`,
+      );
+      await this.enqueueModeration(mediaId);
     } else {
-      await this.mediaRepo.update(mediaId, {
+      const skipped = await this.mediaRepo.update(mediaId, {
         moderationStatus: ModerationStatus.SKIPPED,
       });
-      await this.enqueueTranscode(mediaId);
+      assertMediaUpdated(skipped, mediaId, 'routeAfterUpload → skipped');
+      this.logger.log(
+        `media lifecycle mediaId=${mediaId} uploaded→skipped`,
+      );
+      // Publish before transcode so enqueue failures cannot leave content pending.
       await this.contentPublishService.onMediaTerminalUpdate(mediaId);
+      await this.enqueueTranscode(mediaId);
       this.logger.log(`Skipped moderation, enqueued transcode for ${mediaId}`);
     }
 
     return this.mediaRepo.findOneByOrFail({ id: mediaId });
   }
 
+  async enqueueModeration(mediaId: string): Promise<void> {
+    const jobId = `moderate:${mediaId}`;
+    const existing = await this.moderationQueue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if ((ACTIVE_JOB_STATES as readonly string[]).includes(state)) {
+        this.logger.log(
+          `Moderation already ${state} for media ${mediaId}, skipping enqueue`,
+        );
+        return;
+      }
+      await existing.remove();
+    }
+
+    await this.moderationQueue.add(
+      MEDIA_JOB_MODERATE,
+      { mediaId },
+      {
+        jobId,
+        removeOnComplete: true,
+        removeOnFail: 50,
+      },
+    );
+    this.logger.log(`Enqueued moderation for media ${mediaId}`);
+  }
+
   async enqueueTranscode(mediaId: string): Promise<void> {
-    await this.mediaRepo.update(mediaId, { status: MediaStatus.PROCESSING });
+    const processing = await this.mediaRepo.update(mediaId, {
+      status: MediaStatus.PROCESSING,
+    });
+    assertMediaUpdated(processing, mediaId, 'enqueueTranscode → processing');
+    this.logger.log(`media lifecycle mediaId=${mediaId} → processing`);
+
+    const jobId = `transcode:${mediaId}`;
+    const existing = await this.transcodeQueue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if ((ACTIVE_JOB_STATES as readonly string[]).includes(state)) {
+        this.logger.log(
+          `Transcode already ${state} for media ${mediaId}, skipping enqueue`,
+        );
+        return;
+      }
+      await existing.remove();
+    }
+
     await this.transcodeQueue.add(
       MEDIA_JOB_TRANSCODE,
       { mediaId },
       {
-        jobId: `transcode:${mediaId}`,
+        jobId,
         attempts: 1,
         removeOnComplete: true,
         removeOnFail: 50,
       },
     );
+    this.logger.log(`Enqueued transcode for media ${mediaId}`);
   }
 }
