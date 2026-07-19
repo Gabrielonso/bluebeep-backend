@@ -1,36 +1,35 @@
-import { ConfigService } from '@nestjs/config';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { ZeptoMail } from 'src/common/zepto-mail';
-import { Processor } from '@nestjs/bullmq';
+import { JobQueue, JobType } from 'src/common/enums/jobs.enum';
 
-@Processor('emails')
-export class EmailProcessor {
-  private mailgun: any;
-  private domain: string;
-  private zeptoMailService: ZeptoMail;
-  constructor(private configService: ConfigService) {
-    this.zeptoMailService = new ZeptoMail();
+@Processor(JobQueue.EMAILS)
+export class EmailProcessor extends WorkerHost {
+  private readonly zeptoMailService = new ZeptoMail();
+
+  async process(job: Job): Promise<void> {
+    switch (job.name) {
+      case JobType.SEND_EMAIL_ZEPTO: {
+        const { recipient, subject, templateId, templateVariables } = job.data;
+        await this.zeptoMailService.sendMailWithZepto({
+          recipient,
+          subject,
+          template_id: templateId,
+          template_variables: templateVariables,
+          reply_to_email: '',
+          allow_to_reply: false,
+          send_attachment: false,
+        });
+        break;
+      }
+    }
   }
 
-  // @Process(JobType.SEND_EMAIL_ZEPTO)
-  // async handleSendEmailZepto(job: Job) {
-  //   const { recipient, subject, templateId, templateVariables } = job.data;
-  //   await this.zeptoMailService.sendMailWithZepto({
-  //     recipient,
-  //     subject,
-  //     template_id: templateId,
-  //     template_variables: templateVariables,
-  //     // cc: null,
-  //     // bcc: null,
-  //     // attachments: null,
-  //     reply_to_email: '',
-  //     allow_to_reply: false,
-  //     send_attachment: false,
-  //   });
-  // }
-
-  // @OnQueueFailed()
-  // onFailed(job: Job, error: Error) {
-  //   console.error(`Email Job failed: ${job.id} with error:`, error.message);
-  //   console.log(`Attempt number ${job.attemptsMade}`);
-  // }
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, error: Error) {
+    console.error(
+      `Email job failed: ${job.id} (attempt ${job.attemptsMade}) with error:`,
+      error?.message ?? error,
+    );
+  }
 }

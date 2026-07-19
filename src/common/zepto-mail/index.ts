@@ -83,7 +83,7 @@ export class ZeptoMail {
           message = { ...message, bcc: bcc_emails };
         }
 
-        await mailSender.sendMail(message);
+        await mailSender.sendMailWithTemplate(message);
         console.log(`Successfully sent email to ${recipient}`);
         resolve({ done: true });
       } catch (error) {

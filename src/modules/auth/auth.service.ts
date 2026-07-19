@@ -37,6 +37,28 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { baseUsername } from 'src/common/utils/utilityFunctions';
 import { customAlphabet } from 'nanoid';
 import { AccountActivityService } from '../account-activity/account-activity.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { JobQueue, JobType } from 'src/common/enums/jobs.enum';
+
+const EMAIL_TEMPLATES = {
+  VERIFY_EMAIL_OTP:
+    '2d6f.11a8fc9fee352c53.k1.df1fb710-8386-11f1-89fd-525400a229b1.19f7b00b501',
+  WELCOME:
+    '2d6f.11a8fc9fee352c53.k1.268e4e40-8387-11f1-89fd-525400a229b1.19f7b028924',
+  PASSWORD_RESET_OTP:
+    '2d6f.11a8fc9fee352c53.k1.4c8f9d60-8387-11f1-89fd-525400a229b1.19f7b038236',
+};
+
+const EMAIL_JOB_OPTIONS = {
+  removeOnComplete: true,
+  removeOnFail: false,
+  attempts: 3,
+  backoff: {
+    type: 'exponential',
+    delay: 3000,
+  },
+};
 
 @Injectable()
 export class AuthService {
@@ -49,6 +71,8 @@ export class AuthService {
     @InjectRepository(User)
     private userRepo: Repository<User>,
     private readonly accountActivityService: AccountActivityService,
+    @InjectQueue(JobQueue.EMAILS)
+    private readonly emailQueue: Queue,
   ) {
     const alphabet = '0123456789';
     this.nanoid = customAlphabet(alphabet, 16);
@@ -265,8 +289,7 @@ export class AuthService {
           const encryptedPassword = await this.hashPassword(
             signupUserDto.password,
           );
-          // const otp = generateOtp();
-          const otp = '121212';
+          const otp = generateOtp();
 
           await userRepo.delete({
             id: existingUser?.id,
@@ -284,28 +307,19 @@ export class AuthService {
             dob,
           });
 
-          // await this.emailQueue.add(
-          //   JobType.SEND_EMAIL_ZEPTO,
-          //   {
-          //     recipient: email,
-          //     subject: 'Welcome to SurestPay',
-          //     templateId:
-          //       '2d6f.67f1905edb6f2fba.k1.e3541171-364b-11f0-a285-86f7e6aa0425.196f324dc04',
-          //     templateVariables: {
-          //       name: firstName,
-          //       otp,
-          //     },
-          //   },
-          //   {
-          //     removeOnComplete: true,
-          //     removeOnFail: false,
-          //     attempts: 3,
-          //     backoff: {
-          //       type: 'exponential',
-          //       delay: 3000,
-          //     },
-          //   },
-          // );
+          await this.emailQueue.add(
+            JobType.SEND_EMAIL_ZEPTO,
+            {
+              recipient: email,
+              subject: 'Verify your BlueBeep account',
+              templateId: EMAIL_TEMPLATES.VERIFY_EMAIL_OTP,
+              templateVariables: {
+                name: firstName,
+                otp,
+              },
+            },
+            EMAIL_JOB_OPTIONS,
+          );
           return {
             statusCode: HttpStatus.OK,
             message: 'Signup was successful. Proceed to verify your email',
@@ -407,30 +421,18 @@ export class AuthService {
 
           const { ...rest } = updatedUser;
           delete (rest as any).role;
-          // await this.emailQueue.add(
-          //   JobType.SEND_EMAIL_ZEPTO,
-          //   {
-          //     recipient: email,
-          //     subject: 'Welcome to SurestPay',
-          //     templateId:
-          //       '2d6f.67f1905edb6f2fba.k1.afcef420-2b27-11f0-af85-5254001dc20d.196aa20ac62',
-          //     templateVariables: {
-          //       username: user.firstName,
-          //     },
-          //   },
-          //   {
-          //     removeOnComplete: true,
-          //     removeOnFail: false,
-          //     attempts: 3,
-          //     backoff: {
-          //       type: 'exponential',
-          //       delay: 3000,
-          //     },
-          //   },
-          // );
-          // if (this.configService.get<string>('NODE_ENV') == 'production') {
-
-          //}
+          await this.emailQueue.add(
+            JobType.SEND_EMAIL_ZEPTO,
+            {
+              recipient: email,
+              subject: 'Welcome to BlueBeep!',
+              templateId: EMAIL_TEMPLATES.WELCOME,
+              templateVariables: {
+                username: user.firstName,
+              },
+            },
+            EMAIL_JOB_OPTIONS,
+          );
 
           return {
             statusCode: HttpStatus.OK,
@@ -469,36 +471,26 @@ export class AuthService {
             );
           }
 
-          // const otp = generateOtp();
-          const otp = '121212';
+          const otp = generateOtp();
 
           await userRepo.update(
             { id: user.id },
             { otp, otpExpiresAt: new Date(new Date().getTime() + 15 * 60000) },
           );
 
-          // await this.emailQueue.add(
-          //   JobType.SEND_EMAIL_ZEPTO,
-          //   {
-          //     recipient: user.email,
-          //     subject: 'Welcome to SurestPay',
-          //     templateId:
-          //       '2d6f.67f1905edb6f2fba.k1.e3541171-364b-11f0-a285-86f7e6aa0425.196f324dc04',
-          //     templateVariables: {
-          //       name: user?.firstName,
-          //       otp,
-          //     },
-          //   },
-          //   {
-          //     removeOnComplete: true,
-          //     removeOnFail: false,
-          //     attempts: 3,
-          //     backoff: {
-          //       type: 'exponential',
-          //       delay: 3000,
-          //     },
-          //   },
-          // );
+          await this.emailQueue.add(
+            JobType.SEND_EMAIL_ZEPTO,
+            {
+              recipient: user.email,
+              subject: 'Verify your BlueBeep account',
+              templateId: EMAIL_TEMPLATES.VERIFY_EMAIL_OTP,
+              templateVariables: {
+                name: user?.firstName,
+                otp,
+              },
+            },
+            EMAIL_JOB_OPTIONS,
+          );
 
           return {
             statusCode: HttpStatus.OK,
@@ -548,8 +540,7 @@ export class AuthService {
           }
 
           if (!user.verified) {
-            // const otp = generateOtp();
-            const otp = '121212';
+            const otp = generateOtp();
             await userRepo.update(
               { id: user.id },
               {
@@ -557,28 +548,19 @@ export class AuthService {
                 otpExpiresAt: new Date(new Date().getTime() + 15 * 60000),
               },
             );
-            // await this.emailQueue.add(
-            //   JobType.SEND_EMAIL_ZEPTO,
-            //   {
-            //     recipient: user.email,
-            //     subject: 'Welcome to SurestPay',
-            //     templateId:
-            //       '2d6f.67f1905edb6f2fba.k1.e3541171-364b-11f0-a285-86f7e6aa0425.196f324dc04',
-            //     templateVariables: {
-            //       name: user?.firstName,
-            //       otp,
-            //     },
-            //   },
-            //   {
-            //     removeOnComplete: true,
-            //     removeOnFail: false,
-            //     attempts: 3,
-            //     backoff: {
-            //       type: 'exponential',
-            //       delay: 3000,
-            //     },
-            //   },
-            // );
+            await this.emailQueue.add(
+              JobType.SEND_EMAIL_ZEPTO,
+              {
+                recipient: user.email,
+                subject: 'Verify your BlueBeep account',
+                templateId: EMAIL_TEMPLATES.VERIFY_EMAIL_OTP,
+                templateVariables: {
+                  name: user?.firstName,
+                  otp,
+                },
+              },
+              EMAIL_JOB_OPTIONS,
+            );
 
             throw new HttpException(
               {
@@ -646,37 +628,28 @@ export class AuthService {
             );
           }
 
-          //  const otp = generateOtp();
-          const otp = '121212';
+          const otp = generateOtp();
 
-          // await this.emailQueue.add(
-          //   JobType.SEND_EMAIL_ZEPTO,
-          //   {
-          //     recipient: existingUser?.email,
-          //     subject: 'Welcome to SurestPay',
-          //     templateId:
-          //       '2d6f.67f1905edb6f2fba.k1.e3541171-364b-11f0-a285-86f7e6aa0425.196f324dc04',
-          //     templateVariables: {
-          //       name: existingUser.firstName,
-          //       otp,
-          //     },
-          //   },
-          //   {
-          //     removeOnComplete: true,
-          //     removeOnFail: false,
-          //     attempts: 3,
-          //     backoff: {
-          //       type: 'exponential',
-          //       delay: 3000,
-          //     },
-          //   },
-          // );
           await userRepo.update(
             { id: existingUser.id },
             {
               resetOtp: otp,
               resetOtpExpiresAt: new Date(new Date().getTime() + 15 * 60000),
             },
+          );
+
+          await this.emailQueue.add(
+            JobType.SEND_EMAIL_ZEPTO,
+            {
+              recipient: existingUser?.email,
+              subject: 'Reset your BlueBeep password',
+              templateId: EMAIL_TEMPLATES.PASSWORD_RESET_OTP,
+              templateVariables: {
+                name: existingUser.firstName,
+                otp,
+              },
+            },
+            EMAIL_JOB_OPTIONS,
           );
 
           return {

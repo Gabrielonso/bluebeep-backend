@@ -12,6 +12,8 @@ import { GoogleStrategy } from 'src/common/strategies/google.strategy';
 import { JwtStrategy } from 'src/common/strategies/jwt.strategy';
 import { AccountActivityModule } from '../account-activity/account-activity.module';
 import { UserModule } from '../user/user.module';
+import { BullModule } from '@nestjs/bullmq';
+import { JobQueue } from 'src/common/enums/jobs.enum';
 
 @Module({
   providers: [
@@ -28,6 +30,9 @@ import { UserModule } from '../user/user.module';
     JwtModule.register({}),
     AccountActivityModule,
     UserModule,
+    BullModule.registerQueue({
+      name: JobQueue.EMAILS,
+    }),
   ],
 })
 export class AuthModule {}

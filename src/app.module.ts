@@ -28,6 +28,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { StatusModule } from './modules/status/status.module';
 import { SearchModule } from './modules/search/search.module';
 import { RedisModule } from './common/redis/redis.module';
+import { MailModule } from './libs/mail/mail.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { RedisModule } from './common/redis/redis.module';
     CallsModule,
     StatusModule,
     SearchModule,
+    MailModule,
     EventEmitterModule.forRoot({ global: true }),
   ],
   controllers: [AppController],
