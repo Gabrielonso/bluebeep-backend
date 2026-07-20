@@ -95,10 +95,14 @@ export class SoundsService {
           return null;
         }
         const playback = this.mediaUrlResolver.resolve(media);
+        const dims = this.mediaUrlResolver.mediaDimensions(media);
         return {
           id: row.id,
           originalUrl: playback.original,
           streamUrl: playback.stream,
+          duration: dims.duration,
+          width: dims.width,
+          height: dims.height,
           usageCount: row.usageCount,
           lastUsedAt: row.lastUsedAt,
         };

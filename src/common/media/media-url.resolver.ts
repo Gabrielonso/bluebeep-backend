@@ -30,9 +30,8 @@ export class MediaUrlResolver {
 
   toPlaybackPayload(media: Media): MediaPlaybackPayload {
     const playback = this.resolve(media);
-    const width = Number(media.width) || undefined;
-    const height = Number(media.height) || undefined;
-    const aspectRatio = width && height && height > 0 ? width / height : null;
+    const { width, height, duration, aspectRatio, fileName } =
+      this.mediaDimensions(media);
 
     return {
       id: media.id,
@@ -40,11 +39,37 @@ export class MediaUrlResolver {
       status: effectiveMediaStatus(media),
       width,
       height,
-      duration: Number(media.duration) || undefined,
+      duration,
       aspectRatio,
-      fileName: media.fileName ?? undefined,
+      fileName,
       playback,
     };
+  }
+
+  /** Width / height / duration / aspectRatio as stored on the media row. */
+  mediaDimensions(media: Media): {
+    width?: number;
+    height?: number;
+    duration?: number;
+    aspectRatio?: number | null;
+    fileName?: string;
+  } {
+    const width = this.positiveNumber(media.width);
+    const height = this.positiveNumber(media.height);
+    const duration = this.positiveNumber(media.duration);
+
+    return {
+      width,
+      height,
+      duration,
+      aspectRatio: width && height ? width / height : null,
+      fileName: media.fileName ?? undefined,
+    };
+  }
+
+  private positiveNumber(value: unknown): number | undefined {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
   }
 
   isPubliclyVisible(media: Media): boolean {

@@ -136,6 +136,7 @@ export class MediaService {
     const playback = this.urlResolver.hasPlayback(media)
       ? this.urlResolver.toPlaybackPayload(media)
       : null;
+    const dims = this.urlResolver.mediaDimensions(media);
 
     return {
       id: media.id,
@@ -144,6 +145,11 @@ export class MediaService {
       rejectionReason: media.rejectionReason,
       provider: media.provider,
       type: media.type,
+      width: dims.width,
+      height: dims.height,
+      duration: dims.duration,
+      aspectRatio: dims.aspectRatio,
+      fileName: dims.fileName,
       originalUrl: this.resolveOriginalUrl(media),
       playback,
     };
