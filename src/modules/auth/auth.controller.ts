@@ -27,6 +27,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
 } from './dto/password-recovery.dto';
+import { GoogleSignInDto } from './dto/google-sign-in.dto';
 import { Public } from 'src/common/decorators/public.decorator';
 import { GoogleAuthGuard } from 'src/common/guards/google-auth.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -39,16 +40,24 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  @Public()
-  @UseGuards(GoogleAuthGuard)
-  @Get('google/login')
-  googleLogin() {}
+  @Post('/google')
+  @ApiOperation({ summary: 'Sign in with Google ID token (mobile)' })
+  @ApiBody({ type: GoogleSignInDto })
+  async googleSignIn(@Body() googleSignInDto: GoogleSignInDto) {
+    return this.authService.signInWithGoogle(googleSignInDto);
+  }
 
   @Public()
   @UseGuards(GoogleAuthGuard)
-  @Get('google/callback')
-  async googleCallback(@Req() req, @Res() res: Response) {
-    console.log(req.user, 'ueerr');
+  @Get('google/web')
+  @ApiOperation({ summary: 'Start Google OAuth (web)' })
+  googleWebLogin() {}
+
+  @Public()
+  @UseGuards(GoogleAuthGuard)
+  @Get('google/web/callback')
+  @ApiOperation({ summary: 'Google OAuth callback (web)' })
+  async googleWebCallback(@Req() req, @Res() res: Response) {
     await this.authService.handleGoogleCallback(req.user, res);
   }
 

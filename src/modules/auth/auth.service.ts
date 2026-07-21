@@ -3,8 +3,9 @@ import {
   HttpException,
   HttpStatus,
   UnauthorizedException,
+  Inject,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService, ConfigType } from '@nestjs/config';
 import { CreateUserDto } from 'src/modules/user/dto/create-user.dto';
 import { UserService } from 'src/modules/user/user.service';
 import {
@@ -25,6 +26,7 @@ import { User } from 'src/modules/user/entity/user.entity';
 import { generateOtp } from 'src/common/utils/globals';
 import { VerifyEmailDto } from './dto/user-verification.dto';
 import { LoginUserDto } from './dto/login-user.dto';
+import { GoogleSignInDto } from './dto/google-sign-in.dto';
 import { InvalidCredentialsExceptions } from '../../common/exceptions/invalid-credentials.exception';
 import {
   ChangePasswordDto,
@@ -40,6 +42,8 @@ import { AccountActivityService } from '../account-activity/account-activity.ser
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { JobQueue, JobType } from 'src/common/enums/jobs.enum';
+import { OAuth2Client } from 'google-auth-library';
+import googleOauthConfig from 'src/config/google-oauth.config';
 
 const EMAIL_TEMPLATES = {
   VERIFY_EMAIL_OTP:
@@ -63,6 +67,8 @@ const EMAIL_JOB_OPTIONS = {
 @Injectable()
 export class AuthService {
   private nanoid: any;
+  private readonly googleOAuthClient = new OAuth2Client();
+
   constructor(
     private readonly userService: UserService,
     private readonly configService: ConfigService,
@@ -73,6 +79,8 @@ export class AuthService {
     private readonly accountActivityService: AccountActivityService,
     @InjectQueue(JobQueue.EMAILS)
     private readonly emailQueue: Queue,
+    @Inject(googleOauthConfig.KEY)
+    private readonly googleConfiguration: ConfigType<typeof googleOauthConfig>,
   ) {
     const alphabet = '0123456789';
     this.nanoid = customAlphabet(alphabet, 16);
@@ -85,10 +93,123 @@ export class AuthService {
     return await this.userService.create(googleUser);
   }
 
+  async signInWithGoogle(googleSignInDto: GoogleSignInDto) {
+    const { idToken } = googleSignInDto;
+    const audience = this.googleConfiguration.clientIds;
+
+    if (!audience?.length) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: 'Google sign-in is not configured',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    let payload;
+    try {
+      const ticket = await this.googleOAuthClient.verifyIdToken({
+        idToken,
+        audience,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new UnauthorizedException('Invalid Google ID token');
+    }
+
+    if (!payload?.email || payload.email_verified !== true) {
+      throw new UnauthorizedException(
+        'Google account email is missing or not verified',
+      );
+    }
+
+    const user = await this.validateGoogleUser({
+      email: payload.email,
+      firstName: payload.given_name ?? '',
+      lastName: payload.family_name ?? '',
+      password: '',
+      createOption: UserCreateOptions.GOOGLE,
+      profilePicture: payload.picture ?? '',
+    });
+
+    const account = await this.userRepo.findOne({
+      where: { id: user.id },
+      select: [
+        'id',
+        'email',
+        'role',
+        'verified',
+        'firstName',
+        'lastName',
+        'dob',
+        'phoneCode',
+        'phoneNumber',
+        'status',
+        'deletedAt',
+        'profilePicture',
+        'username',
+      ],
+      withDeleted: true,
+    });
+
+    if (!account) {
+      throw new UnauthorizedException('User account not found');
+    }
+
+    if (account.deletedAt) {
+      throw new UnauthorizedException(
+        'This account might have been deleted or deactivated. Please contact the admin if you wish to resolve this.',
+      );
+    }
+
+    if (![UserStatusEnum.ACTIVATED].includes(account.status)) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.UNAUTHORIZED,
+          message: `Your user account has being ${account.status}. Please contact the admin`,
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    await this.accountActivityService.log({
+      userId: account.id,
+      action: 'user.logged-in',
+      metadata: { userId: account.id, type: 'google-login' },
+    });
+
+    const { token } = await this.getTokens(account);
+    const { deletedAt: _deletedAt, ...rest } = account;
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Successfully logged in',
+      data: {
+        user: rest,
+        token,
+      },
+    };
+  }
+
   async handleGoogleCallback(user: User, res: Response) {
     const data = await this.getTokens(user);
-    console.log(data);
-    res.redirect(`http://localhost:5173?token=${data.token}`);
+    const frontendRedirectURL =
+      this.googleConfiguration.frontendRedirectURL ??
+      this.configService.get<string>('GOOGLE_FRONTEND_REDIRECT_URL');
+
+    if (!frontendRedirectURL) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: 'Google frontend redirect URL is not configured',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const separator = frontendRedirectURL.includes('?') ? '&' : '?';
+    res.redirect(`${frontendRedirectURL}${separator}token=${data.token}`);
   }
 
   handleTikTokLogin(res: Response) {
