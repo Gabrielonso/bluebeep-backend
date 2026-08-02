@@ -97,4 +97,64 @@ export class PresenceService {
     }
     return map;
   }
+
+  /**
+   * Scans Redis presence keys and returns counts by status.
+   * Admin/metrics use only — not for hot-path per-request lookups.
+   */
+  async countByStatus(): Promise<Record<PresenceStatus, number>> {
+    const entries = await this.listPresenceEntries();
+    const counts: Record<PresenceStatus, number> = {
+      online: 0,
+      away: 0,
+      offline: 0,
+    };
+    for (const entry of entries) {
+      counts[entry.status] += 1;
+    }
+    return counts;
+  }
+
+  /**
+   * Returns presence entries with userIds (for admin metrics that filter by role).
+   */
+  async listPresenceEntries(): Promise<
+    Array<{ userId: string; status: PresenceStatus }>
+  > {
+    const entries: Array<{ userId: string; status: PresenceStatus }> = [];
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        'presence:status:*',
+        'COUNT',
+        200,
+      );
+      cursor = nextCursor;
+
+      if (!keys.length) continue;
+
+      const values = await this.redis.mget(...keys);
+      for (let i = 0; i < keys.length; i++) {
+        const userId = keys[i].slice('presence:status:'.length);
+        if (!userId) continue;
+        const raw = values[i];
+        if (!raw) {
+          entries.push({ userId, status: 'offline' });
+          continue;
+        }
+        const status = raw.split(':', 1)[0] as PresenceStatus;
+        entries.push({
+          userId,
+          status:
+            status === 'online' || status === 'away' || status === 'offline'
+              ? status
+              : 'offline',
+        });
+      }
+    } while (cursor !== '0');
+
+    return entries;
+  }
 }
