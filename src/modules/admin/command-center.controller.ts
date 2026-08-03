@@ -22,7 +22,7 @@ export class CommandCenterController {
   @ApiOperation({
     summary: 'Command Center KPI summary',
     description:
-      'Pass `from`+`to` (ISO) for a custom window (multi-year allowed), or `range=24h|7d|30d`. Default (no params): all-time. Interval is half-open [from, to).',
+      'Pass `from`+`to` (ISO) for a custom window (multi-year allowed), or `range=24h|7d|30d`. Default (no params): all-time. Interval is half-open [from, to). Includes openTrustReports and breachingSla.',
   })
   getSummary(@Query() query: CommandCenterRangeDto) {
     return this.commandCenterService.getSummary(query);
@@ -62,7 +62,8 @@ export class CommandCenterController {
   @Get('moderation-feed')
   @Roles([UserRoles.ADMIN, UserRoles.SUPER_ADMIN])
   @ApiOperation({
-    summary: 'Ops feed of pending and rejected moderation items',
+    summary:
+      'Ops feed of pending/rejected moderation items and open abuse reports',
   })
   getModerationFeed(@Query() query: CommandCenterFeedDto) {
     return this.commandCenterService.getModerationFeed(query);

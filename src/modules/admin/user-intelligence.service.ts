@@ -9,7 +9,11 @@ import { User } from '../user/entity/user.entity';
 import { UserStatusEnum } from '../user/interfaces/user.interfaces';
 import { ADMIN_METRICS_USER_ROLE } from './admin-metrics.constants';
 import { AdminRiskService } from './risk/admin-risk.service';
-import { emptyModerationSignals } from './risk/admin-risk.types';
+import {
+  emptyModerationSignals,
+  emptyReportSignals,
+  riskProxySqlExpression,
+} from './risk/admin-risk.types';
 import {
   UserIntelligenceQueryDto,
   UserIntelligenceSort,
@@ -32,6 +36,7 @@ type ListRow = {
   riskProxy: number;
   pendingTotal: number;
   rejectedTotal: number;
+  openReports: number;
 };
 
 @Injectable()
@@ -217,18 +222,27 @@ export class UserIntelligenceService {
             AND deleted_at IS NULL AND role = 'user'
         ) x
         GROUP BY owner_id
+      ),
+      rpt AS (
+        SELECT
+          reported_user_id AS user_id,
+          COUNT(*) FILTER (
+            WHERE status IN ('open', 'in_review', 'escalated')
+          )::int AS open_reports,
+          COUNT(*) FILTER (
+            WHERE status IN ('open', 'in_review', 'escalated')
+              AND severity IN ('high', 'critical')
+          )::int AS open_high_severity,
+          COUNT(*) FILTER (
+            WHERE status = 'resolved'
+              AND resolution_outcome IN ('violation_action_taken', 'violation_warning')
+          )::int AS upheld_violations
+        FROM abuse_reports
+        GROUP BY reported_user_id
       )
     `;
 
-    const riskProxy = `
-      LEAST(100, GREATEST(0,
-        CASE WHEN u.status = 'suspended' THEN 40 ELSE 0 END
-        + COALESCE(mod.rejected_total, 0) * 12
-        + COALESCE(mod.pending_total, 0) * 5
-        + CASE WHEN COALESCE(mod.rejected_media, 0) > 0 THEN 18 ELSE 0 END
-        + CASE WHEN COALESCE(mod.rejected_total, 0) >= 3 THEN 20 ELSE 0 END
-      ))
-    `;
+    const riskProxy = riskProxySqlExpression('u');
 
     const listSql = `
       WITH ${modCte}
@@ -247,9 +261,11 @@ export class UserIntelligenceService {
         u.created_at AS "createdAt",
         (${riskProxy})::int AS "riskProxy",
         COALESCE(mod.pending_total, 0)::int AS "pendingTotal",
-        COALESCE(mod.rejected_total, 0)::int AS "rejectedTotal"
+        COALESCE(mod.rejected_total, 0)::int AS "rejectedTotal",
+        COALESCE(rpt.open_reports, 0)::int AS "openReports"
       FROM users u
       LEFT JOIN mod ON mod.owner_id = u.id
+      LEFT JOIN rpt ON rpt.user_id = u.id
       WHERE ${whereSql}
       ORDER BY ${orderBy}
       LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
@@ -260,6 +276,7 @@ export class UserIntelligenceService {
       SELECT COUNT(*)::int AS total
       FROM users u
       LEFT JOIN mod ON mod.owner_id = u.id
+      LEFT JOIN rpt ON rpt.user_id = u.id
       WHERE ${whereSql}
     `;
 
@@ -291,6 +308,7 @@ export class UserIntelligenceService {
             phoneNumber: row.phoneNumber ?? undefined,
           },
           emptyModerationSignals(),
+          emptyReportSignals(),
         );
 
       return {
@@ -308,8 +326,7 @@ export class UserIntelligenceService {
           email: Boolean(row.verified),
           phone: Boolean(row.phoneNumber),
         },
-        /** Peer reports not implemented — rejected moderation count as proxy. */
-        reports: risk.openItems.rejected,
+        reports: Number(row.openReports) || 0,
         riskScore: risk.overall,
         riskLabel: risk.label,
         primaryTrigger: risk.primaryTrigger,
@@ -343,21 +360,46 @@ export class UserIntelligenceService {
       throw new NotFoundException('User not found');
     }
 
-    const [riskMap, activities, moderationHistory, priorSuspensions] =
-      await Promise.all([
-        this.riskService.scoreUsers([user]),
-        this.activityRepo.find({
-          where: { userId },
-          order: { createdAt: 'DESC' },
-          take: 30,
-        }),
-        this.fetchUserModerationHistory(userId),
-        this.activityRepo.count({
-          where: { userId, action: 'user.status.suspended' },
-        }),
-      ]);
+    const [
+      riskMap,
+      activities,
+      moderationHistory,
+      priorSuspensions,
+      reportStats,
+    ] = await Promise.all([
+      this.riskService.scoreUsers([user]),
+      this.activityRepo.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+        take: 30,
+      }),
+      this.fetchUserModerationHistory(userId),
+      this.activityRepo.count({
+        where: { userId, action: 'user.status.suspended' },
+      }),
+      this.dataSource.query(
+        `
+          SELECT
+            COUNT(*)::int AS total_reports,
+            COUNT(*) FILTER (
+              WHERE status = 'resolved'
+                AND resolution_outcome IN ('violation_action_taken', 'violation_warning')
+            )::int AS upheld_violations
+          FROM abuse_reports
+          WHERE reported_user_id = $1
+          `,
+        [userId],
+      ) as Promise<
+        Array<{
+          total_reports: string | number;
+          upheld_violations: string | number;
+        }>
+      >,
+    ]);
 
     const risk = riskMap.get(user.id)!;
+    const totalReports = Number(reportStats[0]?.total_reports ?? 0) || 0;
+    const strikes = Number(reportStats[0]?.upheld_violations ?? 0) || 0;
 
     return successResponse('Operation successful', {
       identity: {
@@ -381,9 +423,8 @@ export class UserIntelligenceService {
       },
       badges: risk.badges,
       stats: {
-        /** Proxies until reports/strikes/gifts exist */
-        reports: risk.openItems.rejected,
-        strikes: Math.min(risk.openItems.rejected, 5),
+        reports: totalReports,
+        strikes,
         priorSuspensions,
         pendingModeration: risk.openItems.pending,
         rejectedModeration: risk.openItems.rejected,
@@ -392,8 +433,8 @@ export class UserIntelligenceService {
       },
       risk,
       accountActivity: {
-        reportsAgainst: risk.openItems.rejected,
-        strikes: Math.min(risk.openItems.rejected, 5),
+        reportsAgainst: totalReports,
+        strikes,
         priorSuspensions,
         status: user.status,
         giftsSent: null,

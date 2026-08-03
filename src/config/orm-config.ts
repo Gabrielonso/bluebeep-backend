@@ -28,6 +28,8 @@ import { Status } from 'src/modules/status/entities/status.entity';
 import { StatusView } from 'src/modules/status/entities/status-view.entity';
 import { CallSession } from 'src/modules/calls/entities/call-session.entity';
 import { LiveStream } from 'src/modules/live-streams/entities/live-stream.entity';
+import { AbuseReport } from 'src/modules/reports/entities/abuse-report.entity';
+import { AbuseReportNote } from 'src/modules/reports/entities/abuse-report-note.entity';
 dotenv.config();
 
 // DB_SSL can hold either the PEM certificate itself or a path to a .pem file
@@ -85,6 +87,8 @@ export const ormConfig: DataSourceOptions = {
     StatusView,
     CallSession,
     LiveStream,
+    AbuseReport,
+    AbuseReportNote,
   ],
   migrations: [],
 };

@@ -10,7 +10,8 @@ export type RiskTrigger =
   | 'repeat_offender'
   | 'media_nsfw'
   | 'bio_flagged'
-  | 'content_flagged';
+  | 'content_flagged'
+  | 'open_abuse_reports';
 
 export type RiskBadge =
   | 'high_risk'
@@ -34,10 +35,16 @@ export interface ModerationSignals {
   mediaRejectionReasons: string[];
 }
 
+export interface ReportSignals {
+  openReports: number;
+  openHighSeverity: number;
+  upheldViolations: number;
+}
+
 export interface UserRiskCategories {
   /** Content / trust integrity from moderation. Primary live signal. */
   contentTrust: number;
-  /** Suspension + repeat rejects. */
+  /** Suspension + repeat rejects + peer-report enforcement. */
   accountEnforcement: number;
   /**
    * Reserved for monetization / device domains.
@@ -55,7 +62,7 @@ export interface UserRiskProfile {
   categories: UserRiskCategories;
   badges: RiskBadge[];
   triggers: RiskTrigger[];
-  openItems: { pending: number; rejected: number };
+  openItems: { pending: number; rejected: number; openReports: number };
   topLabels: string[];
   primaryTrigger: RiskTrigger | null;
 }
@@ -97,6 +104,14 @@ export function emptyModerationSignals(): ModerationSignals {
   };
 }
 
+export function emptyReportSignals(): ReportSignals {
+  return {
+    openReports: 0,
+    openHighSeverity: 0,
+    upheldViolations: 0,
+  };
+}
+
 export function riskLabelFromScore(score: number): RiskLabel {
   if (score >= 75) return 'critical';
   if (score >= 50) return 'high';
@@ -112,7 +127,10 @@ export function isFlaggedStatus(status: UserStatusEnum): boolean {
   return status === UserStatusEnum.SUSPENDED;
 }
 
-/** Lightweight SQL-sortable proxy aligned with scoreUser weights. */
+/**
+ * Lightweight SQL-sortable proxy aligned with scoreUser weights.
+ * Expects `mod` and `rpt` join aliases (report aggregates optional via COALESCE).
+ */
 export function riskProxySqlExpression(alias = 'u'): string {
   return `
     LEAST(100, GREATEST(0,
@@ -121,6 +139,9 @@ export function riskProxySqlExpression(alias = 'u'): string {
       + COALESCE(mod.pending_total, 0) * 5
       + CASE WHEN COALESCE(mod.rejected_media, 0) > 0 THEN 18 ELSE 0 END
       + CASE WHEN COALESCE(mod.rejected_total, 0) >= 3 THEN 20 ELSE 0 END
+      + COALESCE(rpt.open_reports, 0) * 8
+      + COALESCE(rpt.open_high_severity, 0) * 10
+      + COALESCE(rpt.upheld_violations, 0) * 12
     ))
   `;
 }

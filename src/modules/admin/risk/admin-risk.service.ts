@@ -7,9 +7,11 @@ import { ADMIN_METRICS_USER_ROLE } from '../admin-metrics.constants';
 import {
   clampScore,
   emptyModerationSignals,
+  emptyReportSignals,
   ModerationSignals,
   PlatformRiskMetric,
   PlatformRiskSummary,
+  ReportSignals,
   RiskBadge,
   RiskLabel,
   RiskTrigger,
@@ -208,6 +210,7 @@ export class AdminRiskService {
       bioModerationStatus?: ModerationStatus | null;
     },
     signals: ModerationSignals,
+    reportSignals: ReportSignals = emptyReportSignals(),
   ): UserRiskProfile {
     const pending = signals.pendingText + signals.pendingMedia;
     const rejected = signals.rejectedText + signals.rejectedMedia;
@@ -238,6 +241,10 @@ export class AdminRiskService {
     } else if (pending >= 1) {
       accountEnforcement = 20;
     }
+    accountEnforcement +=
+      reportSignals.openReports * 8 +
+      reportSignals.openHighSeverity * 10 +
+      reportSignals.upheldViolations * 12;
     accountEnforcement = clampScore(accountEnforcement);
 
     let overall = clampScore(contentTrust * 0.65 + accountEnforcement * 0.35);
@@ -246,7 +253,13 @@ export class AdminRiskService {
     }
 
     const label = riskLabelFromScore(overall);
-    const triggers = this.buildTriggers(user, signals, rejected, pending);
+    const triggers = this.buildTriggers(
+      user,
+      signals,
+      rejected,
+      pending,
+      reportSignals,
+    );
     const badges = this.buildBadges(user, label, pending);
 
     return {
@@ -262,7 +275,11 @@ export class AdminRiskService {
       },
       badges,
       triggers,
-      openItems: { pending, rejected },
+      openItems: {
+        pending,
+        rejected,
+        openReports: reportSignals.openReports,
+      },
       topLabels: this.topLabelNames(signals.topCategoryScores, 3),
       primaryTrigger: triggers[0] ?? null,
     };
@@ -276,7 +293,11 @@ export class AdminRiskService {
       }
     >,
   ): Promise<Map<string, UserRiskProfile>> {
-    const signalsMap = await this.getModerationSignals(users.map((u) => u.id));
+    const userIds = users.map((u) => u.id);
+    const [signalsMap, reportMap] = await Promise.all([
+      this.getModerationSignals(userIds),
+      this.getReportSignals(userIds),
+    ]);
     const result = new Map<string, UserRiskProfile>();
     for (const user of users) {
       result.set(
@@ -284,10 +305,58 @@ export class AdminRiskService {
         this.scoreUser(
           user,
           signalsMap.get(user.id) ?? emptyModerationSignals(),
+          reportMap.get(user.id) ?? emptyReportSignals(),
         ),
       );
     }
     return result;
+  }
+
+  async getReportSignals(
+    userIds: string[],
+  ): Promise<Map<string, ReportSignals>> {
+    const map = new Map<string, ReportSignals>();
+    for (const id of userIds) {
+      map.set(id, emptyReportSignals());
+    }
+    if (!userIds.length) return map;
+
+    const rows = (await this.dataSource.query(
+      `
+      SELECT
+        reported_user_id AS user_id,
+        COUNT(*) FILTER (
+          WHERE status IN ('open', 'in_review', 'escalated')
+        )::int AS open_reports,
+        COUNT(*) FILTER (
+          WHERE status IN ('open', 'in_review', 'escalated')
+            AND severity IN ('high', 'critical')
+        )::int AS open_high_severity,
+        COUNT(*) FILTER (
+          WHERE status = 'resolved'
+            AND resolution_outcome IN ('violation_action_taken', 'violation_warning')
+        )::int AS upheld_violations
+      FROM abuse_reports
+      WHERE reported_user_id = ANY($1::uuid[])
+      GROUP BY reported_user_id
+      `,
+      [userIds],
+    )) as Array<{
+      user_id: string;
+      open_reports: string | number;
+      open_high_severity: string | number;
+      upheld_violations: string | number;
+    }>;
+
+    for (const row of rows) {
+      map.set(row.user_id, {
+        openReports: Number(row.open_reports) || 0,
+        openHighSeverity: Number(row.open_high_severity) || 0,
+        upheldViolations: Number(row.upheld_violations) || 0,
+      });
+    }
+
+    return map;
   }
 
   /**
@@ -538,10 +607,14 @@ export class AdminRiskService {
     signals: ModerationSignals,
     rejected: number,
     pending: number,
+    reportSignals: ReportSignals,
   ): RiskTrigger[] {
     const triggers: RiskTrigger[] = [];
     if (user.status === UserStatusEnum.SUSPENDED) triggers.push('suspended');
-    if (rejected >= 3) triggers.push('repeat_offender');
+    if (rejected >= 3 || reportSignals.upheldViolations >= 2) {
+      triggers.push('repeat_offender');
+    }
+    if (reportSignals.openReports >= 1) triggers.push('open_abuse_reports');
     if (signals.rejectedMedia > 0 || signals.mediaRejectionReasons.length) {
       triggers.push('media_nsfw');
     }
