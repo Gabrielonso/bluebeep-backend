@@ -11,6 +11,9 @@ import { CallSession } from 'src/modules/calls/entities/call-session.entity';
 import { CallSessionStatus } from 'src/modules/calls/enums/call-session-status.enum';
 import { LiveStream } from 'src/modules/live-streams/entities/live-stream.entity';
 import { LiveStreamStatus } from 'src/modules/live-streams/enums/live-stream-status.enum';
+import { AbuseReport } from 'src/modules/reports/entities/abuse-report.entity';
+import { AbuseReportSeverity } from 'src/modules/reports/enums/abuse-report-severity.enum';
+import { AbuseReportStatus } from 'src/modules/reports/enums/abuse-report-status.enum';
 import { Comment } from '../engagements/entities/comment.entity';
 import { Post } from '../posts/entities/post.entity';
 import { Ad } from '../ads/entities/ads.entity';
@@ -29,7 +32,10 @@ import {
   CommandCenterRangePreset,
 } from './dtos/command-center-range.dto';
 import { AdminRiskService } from './risk/admin-risk.service';
-import { emptyModerationSignals } from './risk/admin-risk.types';
+import {
+  emptyModerationSignals,
+  emptyReportSignals,
+} from './risk/admin-risk.types';
 
 type ActivityTrunc = 'hour' | 'day' | 'month' | 'year';
 
@@ -53,15 +59,23 @@ type AttentionRow = {
 };
 
 type FeedItem = {
-  type: 'text_moderation' | 'media_moderation';
+  type: 'text_moderation' | 'media_moderation' | 'abuse_report';
   id: string;
-  entityType?: TextModerationSurface | 'media';
+  entityType?: TextModerationSurface | 'media' | 'abuse_report';
   ownerId: string | null;
-  status: ModerationStatus | null | undefined;
+  status: ModerationStatus | AbuseReportStatus | null | undefined;
   labels: Record<string, unknown> | null | undefined;
   content?: string | null;
   rejectionReason?: string | null;
   createdAt: Date;
+  publicId?: string;
+  reportType?: string;
+  severity?: AbuseReportSeverity | string;
+  summary?: string;
+  reportedUserId?: string;
+  assigneeId?: string | null;
+  slaDeadline?: string;
+  href?: string;
 };
 
 const MS_HOUR = 60 * 60 * 1000;
@@ -95,6 +109,8 @@ export class CommandCenterService {
     private readonly callRepo: Repository<CallSession>,
     @InjectRepository(LiveStream)
     private readonly liveStreamRepo: Repository<LiveStream>,
+    @InjectRepository(AbuseReport)
+    private readonly abuseReportRepo: Repository<AbuseReport>,
   ) {}
 
   async getRiskSummary() {
@@ -114,6 +130,8 @@ export class CommandCenterService {
       rejectedModeration,
       activeCalls,
       activeLiveStreams,
+      openTrustReports,
+      breachingSla,
     ] = await Promise.all([
       this.countActiveEndUsers(),
       this.countSignupsBetween(window.from, window.to),
@@ -130,6 +148,8 @@ export class CommandCenterService {
       this.countRejectedModerationBetween(window.from, window.to),
       this.countActiveEndUserCalls(),
       this.countActiveLiveStreams(),
+      this.countOpenTrustReports(),
+      this.countBreachingSla(),
     ]);
 
     return successResponse('Operation successful', {
@@ -147,6 +167,8 @@ export class CommandCenterService {
       suspendedUsers: { value: suspendedUsers },
       pendingModeration: { value: pendingModeration },
       rejectedModeration: { value: rejectedModeration },
+      openTrustReports: { value: openTrustReports },
+      breachingSla: { value: breachingSla },
       activeCalls: { value: activeCalls },
       activeLiveStreams: { value: activeLiveStreams },
     });
@@ -450,6 +472,7 @@ export class CommandCenterService {
             phoneNumber: undefined,
           },
           emptyModerationSignals(),
+          emptyReportSignals(),
         );
 
       return {
@@ -481,12 +504,13 @@ export class CommandCenterService {
     const limit = Number(query.limit) || 30;
     const perBucket = Math.max(limit, 20);
 
-    const [textItems, mediaItems] = await Promise.all([
+    const [textItems, mediaItems, abuseItems] = await Promise.all([
       this.fetchTextFeedItems(perBucket),
       this.fetchMediaFeedItems(perBucket),
+      this.fetchAbuseReportFeedItems(perBucket),
     ]);
 
-    const items = [...textItems, ...mediaItems]
+    const items = [...textItems, ...mediaItems, ...abuseItems]
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit)
       .map((item) => ({
@@ -1008,5 +1032,64 @@ export class CommandCenterService {
       rejectionReason: item.rejectionReason ?? null,
       createdAt: item.moderatedAt ?? item.createdAt,
     }));
+  }
+
+  private async fetchAbuseReportFeedItems(limit: number): Promise<FeedItem[]> {
+    const reports = await this.abuseReportRepo.find({
+      where: {
+        status: In([
+          AbuseReportStatus.OPEN,
+          AbuseReportStatus.IN_REVIEW,
+          AbuseReportStatus.ESCALATED,
+        ]),
+      },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+
+    return reports.map((r) => ({
+      type: 'abuse_report' as const,
+      id: r.id,
+      entityType: 'abuse_report' as const,
+      ownerId: r.reportedUserId,
+      status: r.status,
+      labels: null,
+      content: r.summary,
+      createdAt: r.createdAt,
+      publicId: r.publicId,
+      reportType: r.type,
+      severity: r.severity,
+      summary: r.summary,
+      reportedUserId: r.reportedUserId,
+      assigneeId: r.assigneeId,
+      slaDeadline: r.slaDeadline.toISOString(),
+      href: `/admin/trust-queue/reports/${r.id}`,
+    }));
+  }
+
+  private async countOpenTrustReports(): Promise<number> {
+    return this.abuseReportRepo.count({
+      where: {
+        status: In([
+          AbuseReportStatus.OPEN,
+          AbuseReportStatus.IN_REVIEW,
+          AbuseReportStatus.ESCALATED,
+        ]),
+      },
+    });
+  }
+
+  private async countBreachingSla(): Promise<number> {
+    return this.abuseReportRepo
+      .createQueryBuilder('r')
+      .where('r.status IN (:...statuses)', {
+        statuses: [
+          AbuseReportStatus.OPEN,
+          AbuseReportStatus.IN_REVIEW,
+          AbuseReportStatus.ESCALATED,
+        ],
+      })
+      .andWhere('r.sla_deadline < NOW()')
+      .getCount();
   }
 }

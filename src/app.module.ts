@@ -29,6 +29,7 @@ import { StatusModule } from './modules/status/status.module';
 import { SearchModule } from './modules/search/search.module';
 import { RedisModule } from './common/redis/redis.module';
 import { MailModule } from './libs/mail/mail.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { MailModule } from './libs/mail/mail.module';
     StatusModule,
     SearchModule,
     MailModule,
+    ReportsModule,
     EventEmitterModule.forRoot({ global: true }),
   ],
   controllers: [AppController],

@@ -7,6 +7,8 @@ import { CommandCenterController } from './command-center.controller';
 import { CommandCenterService } from './command-center.service';
 import { UserIntelligenceController } from './user-intelligence.controller';
 import { UserIntelligenceService } from './user-intelligence.service';
+import { TrustQueueController } from './trust-queue.controller';
+import { TrustQueueService } from './trust-queue.service';
 import { AdminRiskService } from './risk/admin-risk.service';
 import { Comment } from '../engagements/entities/comment.entity';
 import { Post } from '../posts/entities/post.entity';
@@ -18,18 +20,24 @@ import { Media } from '../media/entities/media.entity';
 import { AccountActivity } from '../account-activity/entities/account-activity.entity';
 import { CallSession } from '../calls/entities/call-session.entity';
 import { LiveStream } from '../live-streams/entities/live-stream.entity';
+import { AbuseReport } from '../reports/entities/abuse-report.entity';
+import { AbuseReportNote } from '../reports/entities/abuse-report-note.entity';
 import { EngagementsModule } from '../engagements/engagements.module';
+import { AccountActivityModule } from '../account-activity/account-activity.module';
+import { ReportsModule } from '../reports/reports.module';
 
 @Module({
   controllers: [
     AdminController,
     CommandCenterController,
     UserIntelligenceController,
+    TrustQueueController,
   ],
   providers: [
     AdminService,
     CommandCenterService,
     UserIntelligenceService,
+    TrustQueueService,
     AdminRiskService,
   ],
   imports: [
@@ -44,9 +52,13 @@ import { EngagementsModule } from '../engagements/engagements.module';
       AccountActivity,
       CallSession,
       LiveStream,
+      AbuseReport,
+      AbuseReportNote,
     ]),
     EngagementsModule,
     RealtimeModule,
+    AccountActivityModule,
+    ReportsModule,
   ],
 })
 export class AdminModule {}
