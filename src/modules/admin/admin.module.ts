@@ -9,6 +9,8 @@ import { UserIntelligenceController } from './user-intelligence.controller';
 import { UserIntelligenceService } from './user-intelligence.service';
 import { TrustQueueController } from './trust-queue.controller';
 import { TrustQueueService } from './trust-queue.service';
+import { AdminRiskEngineController } from './risk/admin-risk-engine.controller';
+import { AdminRiskEngineService } from './risk/admin-risk-engine.service';
 import { AdminRiskService } from './risk/admin-risk.service';
 import { Comment } from '../engagements/entities/comment.entity';
 import { Post } from '../posts/entities/post.entity';
@@ -32,6 +34,7 @@ import { ReportsModule } from '../reports/reports.module';
     CommandCenterController,
     UserIntelligenceController,
     TrustQueueController,
+    AdminRiskEngineController,
   ],
   providers: [
     AdminService,
@@ -39,6 +42,7 @@ import { ReportsModule } from '../reports/reports.module';
     UserIntelligenceService,
     TrustQueueService,
     AdminRiskService,
+    AdminRiskEngineService,
   ],
   imports: [
     TypeOrmModule.forFeature([
