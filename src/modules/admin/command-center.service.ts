@@ -282,7 +282,7 @@ export class CommandCenterService {
           COALESCE(u.bio_moderated_at, u.updated_at, u.created_at) AS "updatedAt"
         FROM users u
         WHERE u.deleted_at IS NULL AND u.role = 'user'
-          AND u.bio_moderation_status = $2
+          AND u.bio_moderation_status::text = $2
 
         UNION ALL
 
@@ -297,22 +297,22 @@ export class CommandCenterService {
             flagged.at AS "updatedAt"
           FROM (
             SELECT owner_id, text_moderated_at AS at FROM posts
-              WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
             UNION ALL
             SELECT owner_id, text_moderated_at FROM ads
-              WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
             UNION ALL
             SELECT owner_id, text_moderated_at FROM thoughts
-              WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
             UNION ALL
             SELECT owner_id, text_moderated_at FROM statuses
-              WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
             UNION ALL
             SELECT user_id, text_moderated_at FROM comments
-              WHERE text_moderation_status = $2
+              WHERE text_moderation_status::text = $2
             UNION ALL
             SELECT owner_id, moderated_at FROM medias
-              WHERE moderation_status = $2 AND owner_id IS NOT NULL
+              WHERE moderation_status::text = $2 AND owner_id IS NOT NULL
           ) flagged
           JOIN users u ON u.id = flagged.owner_id AND u.deleted_at IS NULL AND u.role = 'user'
           ORDER BY flagged.owner_id, flagged.at DESC NULLS LAST
@@ -331,25 +331,25 @@ export class CommandCenterService {
             flagged.at AS "updatedAt"
           FROM (
             SELECT owner_id, text_moderated_at AS at FROM posts
-              WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
             UNION ALL
             SELECT owner_id, text_moderated_at FROM ads
-              WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
             UNION ALL
             SELECT owner_id, text_moderated_at FROM thoughts
-              WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
             UNION ALL
             SELECT owner_id, text_moderated_at FROM statuses
-              WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+              WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
             UNION ALL
             SELECT user_id, text_moderated_at FROM comments
-              WHERE text_moderation_status = $3
+              WHERE text_moderation_status::text = $3
             UNION ALL
             SELECT owner_id, moderated_at FROM medias
-              WHERE moderation_status = $3 AND owner_id IS NOT NULL
+              WHERE moderation_status::text = $3 AND owner_id IS NOT NULL
             UNION ALL
             SELECT id, bio_moderated_at FROM users
-              WHERE bio_moderation_status = $3 AND deleted_at IS NULL AND role = 'user'
+              WHERE bio_moderation_status::text = $3 AND deleted_at IS NULL AND role = 'user'
           ) flagged
           JOIN users u ON u.id = flagged.owner_id AND u.deleted_at IS NULL AND u.role = 'user'
           ORDER BY flagged.owner_id, flagged.at DESC NULLS LAST
@@ -394,42 +394,42 @@ export class CommandCenterService {
 
         SELECT u.id, 'pending_moderation'::text AS reason
         FROM users u
-        WHERE u.deleted_at IS NULL AND u.role = 'user' AND u.bio_moderation_status = $2
+        WHERE u.deleted_at IS NULL AND u.role = 'user' AND u.bio_moderation_status::text = $2
 
         UNION ALL
 
         SELECT DISTINCT owner_id AS id, 'pending_moderation'::text AS reason
         FROM (
-          SELECT owner_id FROM posts WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+          SELECT owner_id FROM posts WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
           UNION
-          SELECT owner_id FROM ads WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+          SELECT owner_id FROM ads WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
           UNION
-          SELECT owner_id FROM thoughts WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+          SELECT owner_id FROM thoughts WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
           UNION
-          SELECT owner_id FROM statuses WHERE text_moderation_status = $2 AND owner_id IS NOT NULL
+          SELECT owner_id FROM statuses WHERE text_moderation_status::text = $2 AND owner_id IS NOT NULL
           UNION
-          SELECT user_id FROM comments WHERE text_moderation_status = $2
+          SELECT user_id FROM comments WHERE text_moderation_status::text = $2
           UNION
-          SELECT owner_id FROM medias WHERE moderation_status = $2 AND owner_id IS NOT NULL
+          SELECT owner_id FROM medias WHERE moderation_status::text = $2 AND owner_id IS NOT NULL
         ) pending_owners
 
         UNION ALL
 
         SELECT DISTINCT owner_id AS id, 'rejected_content'::text AS reason
         FROM (
-          SELECT owner_id FROM posts WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+          SELECT owner_id FROM posts WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
           UNION
-          SELECT owner_id FROM ads WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+          SELECT owner_id FROM ads WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
           UNION
-          SELECT owner_id FROM thoughts WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+          SELECT owner_id FROM thoughts WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
           UNION
-          SELECT owner_id FROM statuses WHERE text_moderation_status = $3 AND owner_id IS NOT NULL
+          SELECT owner_id FROM statuses WHERE text_moderation_status::text = $3 AND owner_id IS NOT NULL
           UNION
-          SELECT user_id FROM comments WHERE text_moderation_status = $3
+          SELECT user_id FROM comments WHERE text_moderation_status::text = $3
           UNION
-          SELECT owner_id FROM medias WHERE moderation_status = $3 AND owner_id IS NOT NULL
+          SELECT owner_id FROM medias WHERE moderation_status::text = $3 AND owner_id IS NOT NULL
           UNION
-          SELECT id FROM users WHERE bio_moderation_status = $3 AND deleted_at IS NULL AND role = 'user'
+          SELECT id FROM users WHERE bio_moderation_status::text = $3 AND deleted_at IS NULL AND role = 'user'
         ) rejected_owners
       )
       SELECT COUNT(*)::int AS total
@@ -539,7 +539,7 @@ export class CommandCenterService {
       .where('c.status IN (:...statuses)', {
         statuses: [CallSessionStatus.RINGING, CallSessionStatus.CONNECTED],
       })
-      .orderBy('c.initiated_at', 'DESC')
+      .orderBy('c.initiatedAt', 'DESC')
       .take(50)
       .getMany();
 

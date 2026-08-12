@@ -179,46 +179,46 @@ export class UserIntelligenceService {
           SUM(rejected_media)::int AS rejected_media
         FROM (
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END AS pending,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END AS rejected,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END AS pending,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END AS rejected,
             0 AS rejected_media
-          FROM posts WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM posts WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM ads WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM ads WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM thoughts WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM thoughts WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM statuses WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM statuses WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT user_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM comments WHERE text_moderation_status IN ($1, $2)
+          FROM comments WHERE text_moderation_status::text IN ($1, $2)
           UNION ALL
           SELECT owner_id,
-            CASE WHEN moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN moderation_status = $2 THEN 1 ELSE 0 END,
-            CASE WHEN moderation_status = $2 THEN 1 ELSE 0 END
-          FROM medias WHERE moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+            CASE WHEN moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN moderation_status::text = $2 THEN 1 ELSE 0 END,
+            CASE WHEN moderation_status::text = $2 THEN 1 ELSE 0 END
+          FROM medias WHERE moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT id,
-            CASE WHEN bio_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN bio_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN bio_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN bio_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM users WHERE bio_moderation_status IN ($1, $2)
+          FROM users WHERE bio_moderation_status::text IN ($1, $2)
             AND deleted_at IS NULL AND role = 'user'
         ) x
         GROUP BY owner_id
@@ -483,45 +483,45 @@ export class UserIntelligenceService {
     const rows = await this.dataSource.query(
       `
       (
-        SELECT 'text_moderation' AS type, 'post' AS entity_type, id::text, text_moderation_status AS status,
+        SELECT 'text_moderation' AS type, 'post' AS entity_type, id::text, text_moderation_status::text AS status,
           text_moderation_labels AS labels, content_pending AS content, text_moderated_at AS at
-        FROM posts WHERE owner_id = $1 AND text_moderation_status IN ($2, $3)
+        FROM posts WHERE owner_id = $1 AND text_moderation_status::text IN ($2, $3)
       )
       UNION ALL
       (
-        SELECT 'text_moderation', 'ad', id::text, text_moderation_status, text_moderation_labels,
+        SELECT 'text_moderation', 'ad', id::text, text_moderation_status::text, text_moderation_labels,
           content_pending, text_moderated_at
-        FROM ads WHERE owner_id = $1 AND text_moderation_status IN ($2, $3)
+        FROM ads WHERE owner_id = $1 AND text_moderation_status::text IN ($2, $3)
       )
       UNION ALL
       (
-        SELECT 'text_moderation', 'thought', id::text, text_moderation_status, text_moderation_labels,
+        SELECT 'text_moderation', 'thought', id::text, text_moderation_status::text, text_moderation_labels,
           content_pending, text_moderated_at
-        FROM thoughts WHERE owner_id = $1 AND text_moderation_status IN ($2, $3)
+        FROM thoughts WHERE owner_id = $1 AND text_moderation_status::text IN ($2, $3)
       )
       UNION ALL
       (
-        SELECT 'text_moderation', 'status', id::text, text_moderation_status, text_moderation_labels,
+        SELECT 'text_moderation', 'status', id::text, text_moderation_status::text, text_moderation_labels,
           content_pending, text_moderated_at
-        FROM statuses WHERE owner_id = $1 AND text_moderation_status IN ($2, $3)
+        FROM statuses WHERE owner_id = $1 AND text_moderation_status::text IN ($2, $3)
       )
       UNION ALL
       (
-        SELECT 'text_moderation', 'comment', id::text, text_moderation_status, text_moderation_labels,
+        SELECT 'text_moderation', 'comment', id::text, text_moderation_status::text, text_moderation_labels,
           content, text_moderated_at
-        FROM comments WHERE user_id = $1 AND text_moderation_status IN ($2, $3)
+        FROM comments WHERE user_id = $1 AND text_moderation_status::text IN ($2, $3)
       )
       UNION ALL
       (
-        SELECT 'text_moderation', 'bio', id::text, bio_moderation_status, bio_moderation_labels,
+        SELECT 'text_moderation', 'bio', id::text, bio_moderation_status::text, bio_moderation_labels,
           bio_pending, bio_moderated_at
-        FROM users WHERE id = $1 AND bio_moderation_status IN ($2, $3)
+        FROM users WHERE id = $1 AND bio_moderation_status::text IN ($2, $3)
       )
       UNION ALL
       (
-        SELECT 'media_moderation', 'media', id::text, moderation_status, moderation_labels,
+        SELECT 'media_moderation', 'media', id::text, moderation_status::text, moderation_labels,
           rejection_reason, moderated_at
-        FROM medias WHERE owner_id = $1 AND moderation_status IN ($2, $3)
+        FROM medias WHERE owner_id = $1 AND moderation_status::text IN ($2, $3)
       )
       ORDER BY at DESC NULLS LAST
       LIMIT 50
@@ -546,30 +546,30 @@ export class UserIntelligenceService {
       SELECT COUNT(DISTINCT owner_id)::int AS c FROM (
         SELECT p.owner_id FROM posts p
           INNER JOIN users ou ON ou.id = p.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE p.text_moderation_status = $1 AND p.owner_id IS NOT NULL
+          WHERE p.text_moderation_status::text = $1 AND p.owner_id IS NOT NULL
         UNION
         SELECT a.owner_id FROM ads a
           INNER JOIN users ou ON ou.id = a.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE a.text_moderation_status = $1 AND a.owner_id IS NOT NULL
+          WHERE a.text_moderation_status::text = $1 AND a.owner_id IS NOT NULL
         UNION
         SELECT th.owner_id FROM thoughts th
           INNER JOIN users ou ON ou.id = th.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE th.text_moderation_status = $1 AND th.owner_id IS NOT NULL
+          WHERE th.text_moderation_status::text = $1 AND th.owner_id IS NOT NULL
         UNION
         SELECT s.owner_id FROM statuses s
           INNER JOIN users ou ON ou.id = s.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE s.text_moderation_status = $1 AND s.owner_id IS NOT NULL
+          WHERE s.text_moderation_status::text = $1 AND s.owner_id IS NOT NULL
         UNION
         SELECT c.user_id FROM comments c
           INNER JOIN users ou ON ou.id = c.user_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE c.text_moderation_status = $1
+          WHERE c.text_moderation_status::text = $1
         UNION
         SELECT m.owner_id FROM medias m
           INNER JOIN users ou ON ou.id = m.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE m.moderation_status = $1 AND m.owner_id IS NOT NULL
+          WHERE m.moderation_status::text = $1 AND m.owner_id IS NOT NULL
         UNION
         SELECT id FROM users
-          WHERE bio_moderation_status = $1 AND deleted_at IS NULL AND role = $2
+          WHERE bio_moderation_status::text = $1 AND deleted_at IS NULL AND role = $2
       ) t
       `,
       [status, ADMIN_METRICS_USER_ROLE],
@@ -586,30 +586,30 @@ export class UserIntelligenceService {
         UNION
         SELECT p.owner_id AS id FROM posts p
           INNER JOIN users ou ON ou.id = p.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE p.text_moderation_status IN ($2, $3) AND p.owner_id IS NOT NULL
+          WHERE p.text_moderation_status::text IN ($2, $3) AND p.owner_id IS NOT NULL
         UNION
         SELECT a.owner_id FROM ads a
           INNER JOIN users ou ON ou.id = a.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE a.text_moderation_status IN ($2, $3) AND a.owner_id IS NOT NULL
+          WHERE a.text_moderation_status::text IN ($2, $3) AND a.owner_id IS NOT NULL
         UNION
         SELECT th.owner_id FROM thoughts th
           INNER JOIN users ou ON ou.id = th.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE th.text_moderation_status IN ($2, $3) AND th.owner_id IS NOT NULL
+          WHERE th.text_moderation_status::text IN ($2, $3) AND th.owner_id IS NOT NULL
         UNION
         SELECT s.owner_id FROM statuses s
           INNER JOIN users ou ON ou.id = s.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE s.text_moderation_status IN ($2, $3) AND s.owner_id IS NOT NULL
+          WHERE s.text_moderation_status::text IN ($2, $3) AND s.owner_id IS NOT NULL
         UNION
         SELECT c.user_id FROM comments c
           INNER JOIN users ou ON ou.id = c.user_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE c.text_moderation_status IN ($2, $3)
+          WHERE c.text_moderation_status::text IN ($2, $3)
         UNION
         SELECT m.owner_id FROM medias m
           INNER JOIN users ou ON ou.id = m.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE m.moderation_status IN ($2, $3) AND m.owner_id IS NOT NULL
+          WHERE m.moderation_status::text IN ($2, $3) AND m.owner_id IS NOT NULL
         UNION
         SELECT id FROM users
-          WHERE bio_moderation_status IN ($2, $3) AND deleted_at IS NULL AND role = $4
+          WHERE bio_moderation_status::text IN ($2, $3) AND deleted_at IS NULL AND role = $4
       ) t
       `,
       [
@@ -628,36 +628,36 @@ export class UserIntelligenceService {
       SELECT COUNT(DISTINCT owner_id)::int AS c FROM (
         SELECT p.owner_id FROM posts p
           INNER JOIN users ou ON ou.id = p.owner_id AND ou.deleted_at IS NULL AND ou.role = $3
-          WHERE p.text_moderation_status IN ($1, $2) AND p.owner_id IS NOT NULL
+          WHERE p.text_moderation_status::text IN ($1, $2) AND p.owner_id IS NOT NULL
             AND p.text_moderated_at >= NOW() - INTERVAL '24 hours'
         UNION
         SELECT a.owner_id FROM ads a
           INNER JOIN users ou ON ou.id = a.owner_id AND ou.deleted_at IS NULL AND ou.role = $3
-          WHERE a.text_moderation_status IN ($1, $2) AND a.owner_id IS NOT NULL
+          WHERE a.text_moderation_status::text IN ($1, $2) AND a.owner_id IS NOT NULL
             AND a.text_moderated_at >= NOW() - INTERVAL '24 hours'
         UNION
         SELECT th.owner_id FROM thoughts th
           INNER JOIN users ou ON ou.id = th.owner_id AND ou.deleted_at IS NULL AND ou.role = $3
-          WHERE th.text_moderation_status IN ($1, $2) AND th.owner_id IS NOT NULL
+          WHERE th.text_moderation_status::text IN ($1, $2) AND th.owner_id IS NOT NULL
             AND th.text_moderated_at >= NOW() - INTERVAL '24 hours'
         UNION
         SELECT s.owner_id FROM statuses s
           INNER JOIN users ou ON ou.id = s.owner_id AND ou.deleted_at IS NULL AND ou.role = $3
-          WHERE s.text_moderation_status IN ($1, $2) AND s.owner_id IS NOT NULL
+          WHERE s.text_moderation_status::text IN ($1, $2) AND s.owner_id IS NOT NULL
             AND s.text_moderated_at >= NOW() - INTERVAL '24 hours'
         UNION
         SELECT c.user_id FROM comments c
           INNER JOIN users ou ON ou.id = c.user_id AND ou.deleted_at IS NULL AND ou.role = $3
-          WHERE c.text_moderation_status IN ($1, $2)
+          WHERE c.text_moderation_status::text IN ($1, $2)
             AND c.text_moderated_at >= NOW() - INTERVAL '24 hours'
         UNION
         SELECT m.owner_id FROM medias m
           INNER JOIN users ou ON ou.id = m.owner_id AND ou.deleted_at IS NULL AND ou.role = $3
-          WHERE m.moderation_status IN ($1, $2) AND m.owner_id IS NOT NULL
+          WHERE m.moderation_status::text IN ($1, $2) AND m.owner_id IS NOT NULL
             AND m.moderated_at >= NOW() - INTERVAL '24 hours'
         UNION
         SELECT id FROM users
-          WHERE bio_moderation_status IN ($1, $2) AND deleted_at IS NULL AND role = $3
+          WHERE bio_moderation_status::text IN ($1, $2) AND deleted_at IS NULL AND role = $3
             AND bio_moderated_at >= NOW() - INTERVAL '24 hours'
       ) t
       `,

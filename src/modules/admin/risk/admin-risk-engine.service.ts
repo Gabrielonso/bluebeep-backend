@@ -570,46 +570,46 @@ export class AdminRiskEngineService {
           SUM(rejected_media)::int AS rejected_media
         FROM (
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END AS pending,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END AS rejected,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END AS pending,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END AS rejected,
             0 AS rejected_media
-          FROM posts WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM posts WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM ads WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM ads WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM thoughts WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM thoughts WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM statuses WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+          FROM statuses WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT user_id,
-            CASE WHEN text_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM comments WHERE text_moderation_status IN ($1, $2)
+          FROM comments WHERE text_moderation_status::text IN ($1, $2)
           UNION ALL
           SELECT owner_id,
-            CASE WHEN moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN moderation_status = $2 THEN 1 ELSE 0 END,
-            CASE WHEN moderation_status = $2 THEN 1 ELSE 0 END
-          FROM medias WHERE moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+            CASE WHEN moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN moderation_status::text = $2 THEN 1 ELSE 0 END,
+            CASE WHEN moderation_status::text = $2 THEN 1 ELSE 0 END
+          FROM medias WHERE moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION ALL
           SELECT id,
-            CASE WHEN bio_moderation_status = $1 THEN 1 ELSE 0 END,
-            CASE WHEN bio_moderation_status = $2 THEN 1 ELSE 0 END,
+            CASE WHEN bio_moderation_status::text = $1 THEN 1 ELSE 0 END,
+            CASE WHEN bio_moderation_status::text = $2 THEN 1 ELSE 0 END,
             0
-          FROM users WHERE bio_moderation_status IN ($1, $2)
+          FROM users WHERE bio_moderation_status::text IN ($1, $2)
             AND deleted_at IS NULL AND role = $3
         ) x
         GROUP BY owner_id
@@ -761,25 +761,25 @@ export class AdminRiskEngineService {
         `
         SELECT COUNT(DISTINCT owner_id)::int AS c FROM (
           SELECT owner_id FROM posts
-            WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+            WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION
           SELECT owner_id FROM ads
-            WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+            WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION
           SELECT owner_id FROM thoughts
-            WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+            WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION
           SELECT owner_id FROM statuses
-            WHERE text_moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+            WHERE text_moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION
           SELECT user_id FROM comments
-            WHERE text_moderation_status IN ($1, $2)
+            WHERE text_moderation_status::text IN ($1, $2)
           UNION
           SELECT owner_id FROM medias
-            WHERE moderation_status IN ($1, $2) AND owner_id IS NOT NULL
+            WHERE moderation_status::text IN ($1, $2) AND owner_id IS NOT NULL
           UNION
           SELECT id FROM users
-            WHERE bio_moderation_status IN ($1, $2) AND deleted_at IS NULL AND role = $3
+            WHERE bio_moderation_status::text IN ($1, $2) AND deleted_at IS NULL AND role = $3
         ) t
         `,
         [
@@ -1033,7 +1033,7 @@ export class AdminRiskEngineService {
           'rejected_content' AS signal_type,
           COALESCE(p.text_moderation_labels::text, 'Content rejected') AS details
         FROM posts p
-        WHERE p.text_moderation_status = $1
+        WHERE p.text_moderation_status::text = $1
           AND p.text_moderated_at >= $2
           AND p.text_moderated_at < $3
           AND p.owner_id IS NOT NULL
@@ -1050,7 +1050,7 @@ export class AdminRiskEngineService {
           END,
           COALESCE(m.rejection_reason, 'Media rejected')
         FROM medias m
-        WHERE m.moderation_status = $1
+        WHERE m.moderation_status::text = $1
           AND m.moderated_at >= $2
           AND m.moderated_at < $3
           AND m.owner_id IS NOT NULL
