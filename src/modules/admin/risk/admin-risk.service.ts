@@ -57,52 +57,52 @@ export class AdminRiskService {
           SUM(rejected_media)::int AS rejected_media
         FROM (
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END AS pending_text,
-            CASE WHEN text_moderation_status = $3 THEN 1 ELSE 0 END AS rejected_text,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END AS pending_text,
+            CASE WHEN text_moderation_status::text = $3 THEN 1 ELSE 0 END AS rejected_text,
             0 AS pending_media,
             0 AS rejected_media
           FROM posts WHERE owner_id = ANY($1::uuid[])
-            AND text_moderation_status IN ($2, $3)
+            AND text_moderation_status::text IN ($2, $3)
 
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $3 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $3 THEN 1 ELSE 0 END,
             0, 0
           FROM ads WHERE owner_id = ANY($1::uuid[])
-            AND text_moderation_status IN ($2, $3)
+            AND text_moderation_status::text IN ($2, $3)
 
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $3 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $3 THEN 1 ELSE 0 END,
             0, 0
           FROM thoughts WHERE owner_id = ANY($1::uuid[])
-            AND text_moderation_status IN ($2, $3)
+            AND text_moderation_status::text IN ($2, $3)
 
           UNION ALL
           SELECT owner_id,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $3 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $3 THEN 1 ELSE 0 END,
             0, 0
           FROM statuses WHERE owner_id = ANY($1::uuid[])
-            AND text_moderation_status IN ($2, $3)
+            AND text_moderation_status::text IN ($2, $3)
 
           UNION ALL
           SELECT user_id AS owner_id,
-            CASE WHEN text_moderation_status = $2 THEN 1 ELSE 0 END,
-            CASE WHEN text_moderation_status = $3 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $2 THEN 1 ELSE 0 END,
+            CASE WHEN text_moderation_status::text = $3 THEN 1 ELSE 0 END,
             0, 0
           FROM comments WHERE user_id = ANY($1::uuid[])
-            AND text_moderation_status IN ($2, $3)
+            AND text_moderation_status::text IN ($2, $3)
 
           UNION ALL
           SELECT owner_id,
             0, 0,
-            CASE WHEN moderation_status = $2 THEN 1 ELSE 0 END,
-            CASE WHEN moderation_status = $3 THEN 1 ELSE 0 END
+            CASE WHEN moderation_status::text = $2 THEN 1 ELSE 0 END,
+            CASE WHEN moderation_status::text = $3 THEN 1 ELSE 0 END
           FROM medias WHERE owner_id = ANY($1::uuid[])
-            AND moderation_status IN ($2, $3)
+            AND moderation_status::text IN ($2, $3)
         ) t
         GROUP BY owner_id
         `,
@@ -114,27 +114,27 @@ export class AdminRiskService {
         SELECT owner_id, labels, NULL::text AS rejection_reason
         FROM (
           SELECT owner_id, text_moderation_labels AS labels FROM posts
-            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status IN ($2, $3)
+            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status::text IN ($2, $3)
               AND text_moderation_labels IS NOT NULL
           UNION ALL
           SELECT owner_id, text_moderation_labels FROM ads
-            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status IN ($2, $3)
+            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status::text IN ($2, $3)
               AND text_moderation_labels IS NOT NULL
           UNION ALL
           SELECT owner_id, text_moderation_labels FROM thoughts
-            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status IN ($2, $3)
+            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status::text IN ($2, $3)
               AND text_moderation_labels IS NOT NULL
           UNION ALL
           SELECT owner_id, text_moderation_labels FROM statuses
-            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status IN ($2, $3)
+            WHERE owner_id = ANY($1::uuid[]) AND text_moderation_status::text IN ($2, $3)
               AND text_moderation_labels IS NOT NULL
           UNION ALL
           SELECT user_id, text_moderation_labels FROM comments
-            WHERE user_id = ANY($1::uuid[]) AND text_moderation_status IN ($2, $3)
+            WHERE user_id = ANY($1::uuid[]) AND text_moderation_status::text IN ($2, $3)
               AND text_moderation_labels IS NOT NULL
           UNION ALL
           SELECT id, bio_moderation_labels FROM users
-            WHERE id = ANY($1::uuid[]) AND bio_moderation_status IN ($2, $3)
+            WHERE id = ANY($1::uuid[]) AND bio_moderation_status::text IN ($2, $3)
               AND bio_moderation_labels IS NOT NULL
         ) x
         LIMIT 500
@@ -147,7 +147,7 @@ export class AdminRiskService {
         SELECT owner_id, moderation_labels AS labels, rejection_reason
         FROM medias
         WHERE owner_id = ANY($1::uuid[])
-          AND moderation_status IN ($2, $3)
+          AND moderation_status::text IN ($2, $3)
         LIMIT 200
         `,
         [userIds, ModerationStatus.PENDING, ModerationStatus.REJECTED],
@@ -451,24 +451,24 @@ export class AdminRiskService {
       SELECT (
         (SELECT COUNT(*) FROM posts t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = ANY($1::moderation_status_enum[]) AND t.owner_id IS NOT NULL)
+          WHERE t.text_moderation_status::text = ANY($1::text[]) AND t.owner_id IS NOT NULL)
         + (SELECT COUNT(*) FROM ads t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = ANY($1::moderation_status_enum[]) AND t.owner_id IS NOT NULL)
+          WHERE t.text_moderation_status::text = ANY($1::text[]) AND t.owner_id IS NOT NULL)
         + (SELECT COUNT(*) FROM thoughts t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = ANY($1::moderation_status_enum[]) AND t.owner_id IS NOT NULL)
+          WHERE t.text_moderation_status::text = ANY($1::text[]) AND t.owner_id IS NOT NULL)
         + (SELECT COUNT(*) FROM statuses t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = ANY($1::moderation_status_enum[]) AND t.owner_id IS NOT NULL)
+          WHERE t.text_moderation_status::text = ANY($1::text[]) AND t.owner_id IS NOT NULL)
         + (SELECT COUNT(*) FROM comments t
           INNER JOIN users ou ON ou.id = t.user_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = ANY($1::moderation_status_enum[]))
+          WHERE t.text_moderation_status::text = ANY($1::text[]))
         + (SELECT COUNT(*) FROM users u
-          WHERE u.bio_moderation_status = ANY($1::moderation_status_enum[]) AND u.deleted_at IS NULL AND u.role = $2)
+          WHERE u.bio_moderation_status::text = ANY($1::text[]) AND u.deleted_at IS NULL AND u.role = $2)
         + (SELECT COUNT(*) FROM medias m
           INNER JOIN users ou ON ou.id = m.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE m.moderation_status = ANY($1::moderation_status_enum[]) AND m.owner_id IS NOT NULL)
+          WHERE m.moderation_status::text = ANY($1::text[]) AND m.owner_id IS NOT NULL)
       )::int AS total
       `,
       [statuses, ADMIN_METRICS_USER_ROLE],
@@ -485,30 +485,30 @@ export class AdminRiskService {
         UNION
         SELECT p.owner_id AS id FROM posts p
           INNER JOIN users ou ON ou.id = p.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE p.text_moderation_status IN ($2, $3) AND p.owner_id IS NOT NULL
+          WHERE p.text_moderation_status::text IN ($2, $3) AND p.owner_id IS NOT NULL
         UNION
         SELECT a.owner_id FROM ads a
           INNER JOIN users ou ON ou.id = a.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE a.text_moderation_status IN ($2, $3) AND a.owner_id IS NOT NULL
+          WHERE a.text_moderation_status::text IN ($2, $3) AND a.owner_id IS NOT NULL
         UNION
         SELECT th.owner_id FROM thoughts th
           INNER JOIN users ou ON ou.id = th.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE th.text_moderation_status IN ($2, $3) AND th.owner_id IS NOT NULL
+          WHERE th.text_moderation_status::text IN ($2, $3) AND th.owner_id IS NOT NULL
         UNION
         SELECT s.owner_id FROM statuses s
           INNER JOIN users ou ON ou.id = s.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE s.text_moderation_status IN ($2, $3) AND s.owner_id IS NOT NULL
+          WHERE s.text_moderation_status::text IN ($2, $3) AND s.owner_id IS NOT NULL
         UNION
         SELECT c.user_id FROM comments c
           INNER JOIN users ou ON ou.id = c.user_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE c.text_moderation_status IN ($2, $3)
+          WHERE c.text_moderation_status::text IN ($2, $3)
         UNION
         SELECT m.owner_id FROM medias m
           INNER JOIN users ou ON ou.id = m.owner_id AND ou.deleted_at IS NULL AND ou.role = $4
-          WHERE m.moderation_status IN ($2, $3) AND m.owner_id IS NOT NULL
+          WHERE m.moderation_status::text IN ($2, $3) AND m.owner_id IS NOT NULL
         UNION
         SELECT id FROM users
-          WHERE bio_moderation_status IN ($2, $3) AND deleted_at IS NULL AND role = $4
+          WHERE bio_moderation_status::text IN ($2, $3) AND deleted_at IS NULL AND role = $4
       ) t
       `,
       [
@@ -540,24 +540,24 @@ export class AdminRiskService {
       SELECT (
         (SELECT COUNT(*) FROM posts t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = $1 AND t.owner_id IS NOT NULL ${textSince})
+          WHERE t.text_moderation_status::text = $1 AND t.owner_id IS NOT NULL ${textSince})
         + (SELECT COUNT(*) FROM ads t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = $1 AND t.owner_id IS NOT NULL ${textSince})
+          WHERE t.text_moderation_status::text = $1 AND t.owner_id IS NOT NULL ${textSince})
         + (SELECT COUNT(*) FROM thoughts t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = $1 AND t.owner_id IS NOT NULL ${textSince})
+          WHERE t.text_moderation_status::text = $1 AND t.owner_id IS NOT NULL ${textSince})
         + (SELECT COUNT(*) FROM statuses t
           INNER JOIN users ou ON ou.id = t.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = $1 AND t.owner_id IS NOT NULL ${textSince})
+          WHERE t.text_moderation_status::text = $1 AND t.owner_id IS NOT NULL ${textSince})
         + (SELECT COUNT(*) FROM comments t
           INNER JOIN users ou ON ou.id = t.user_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE t.text_moderation_status = $1 ${textSince})
+          WHERE t.text_moderation_status::text = $1 ${textSince})
         + (SELECT COUNT(*) FROM users u
-          WHERE u.bio_moderation_status = $1 AND u.deleted_at IS NULL AND u.role = $2 ${bioSince})
+          WHERE u.bio_moderation_status::text = $1 AND u.deleted_at IS NULL AND u.role = $2 ${bioSince})
         + (SELECT COUNT(*) FROM medias m
           INNER JOIN users ou ON ou.id = m.owner_id AND ou.deleted_at IS NULL AND ou.role = $2
-          WHERE m.moderation_status = $1 AND m.owner_id IS NOT NULL ${mediaSince})
+          WHERE m.moderation_status::text = $1 AND m.owner_id IS NOT NULL ${mediaSince})
       )::int AS total
       `,
       [status, ADMIN_METRICS_USER_ROLE],
