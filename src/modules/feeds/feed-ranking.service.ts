@@ -18,6 +18,11 @@ export type ScoreContext = {
   viewerId: string;
 };
 
+export type MergeBySlotsOptions = {
+  seenMap?: SeenPostMap;
+  seed?: string;
+};
+
 @Injectable()
 export class FeedRankingService {
   generateSeed(existing?: string): string {
@@ -50,15 +55,48 @@ export class FeedRankingService {
   }
 
   hashToUnitInterval(seed: string, candidateId: string): number {
-    const hash = createHash('sha256')
-      .update(`${seed}:${candidateId}`)
-      .digest();
+    const hash = createHash('sha256').update(`${seed}:${candidateId}`).digest();
     return hash.readUInt32BE(0) / 0xffffffff;
+  }
+
+  /** Stable 0..n-1 offset so cold starts don't always open on the same slot. */
+  slotOffsetForSeed(seed: string | undefined, templateLength: number): number {
+    if (!seed || templateLength <= 0) return 0;
+    const hash = createHash('sha256').update(`slot:${seed}`).digest();
+    return hash.readUInt32BE(0) % templateLength;
   }
 
   recencyDecay(hoursSince: number, halfLifeHours: number): number {
     if (hoursSince <= 0) return 1;
     return Math.exp(-hoursSince / halfLifeHours);
+  }
+
+  /**
+   * Fresh for the viewer: never viewed, or a followed repost that happened
+   * after the last view (social signal worth resurfacing).
+   */
+  isFreshForViewer(
+    candidate: RankedFeedCandidate,
+    seenMap?: SeenPostMap,
+  ): boolean {
+    if (candidate.type === FeedType.AD || candidate.pool === 'ad') {
+      return true;
+    }
+    if (!seenMap?.size) return true;
+
+    const viewedAt = seenMap.get(candidate.id);
+    if (!viewedAt) return true;
+
+    if (
+      candidate.pool === 'repost' &&
+      candidate.latestRepostAt &&
+      new Date(candidate.latestRepostAt).getTime() >
+        new Date(viewedAt).getTime()
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   computeSeenMultiplier(
@@ -127,7 +165,7 @@ export class FeedRankingService {
       candidate.ownerId != null && ctx.followingIds.has(candidate.ownerId);
     const isFollowedRepost = candidate.pool === 'repost';
 
-    let baseScore =
+    const baseScore =
       FEED_RANKING.WEIGHT_RECENCY *
         this.recencyDecay(
           hoursSincePost,
@@ -179,6 +217,11 @@ export class FeedRankingService {
     }));
     const jittered = this.applyJitter(scored, seed);
     return jittered.sort((a, b) => {
+      // Unseen before seen within the same pool (For You / continuous scroll).
+      const aFresh = this.isFreshForViewer(a, ctx.seenMap) ? 1 : 0;
+      const bFresh = this.isFreshForViewer(b, ctx.seenMap) ? 1 : 0;
+      if (aFresh !== bFresh) return bFresh - aFresh;
+
       const scoreDiff = (b.finalScore ?? 0) - (a.finalScore ?? 0);
       if (scoreDiff !== 0) return scoreDiff;
       return b.id.localeCompare(a.id);
@@ -195,31 +238,36 @@ export class FeedRankingService {
     return candidate.id < cursor.id;
   }
 
+  /**
+   * Interleave pools with a slot template.
+   * Phase 1: only fresh (unseen) posts — TikTok/IG style.
+   * Phase 2: recycle seen posts only after fresh inventory is exhausted.
+   * Slot start is rotated by seed so refreshes don't always open on the same source.
+   */
   mergeBySlots(
     pools: Record<FeedPoolSource, RankedFeedCandidate[]>,
     limit: number,
     cursor?: RankedFeedCursor | null,
+    options: MergeBySlotsOptions = {},
   ): RankedFeedCandidate[] {
-    const indices: Record<FeedPoolSource, number> = {
-      following: 0,
-      discovery: 0,
-      repost: 0,
-      ad: 0,
-    };
-
-    const seenPostIds = new Set<string>();
+    const { seenMap, seed } = options;
+    const usedPostIds = new Set<string>();
     const result: RankedFeedCandidate[] = [];
+    const templateLen = FEED_SLOT_TEMPLATE.length;
+    const slotOffset = this.slotOffsetForSeed(seed, templateLen);
 
-    const takeFromPool = (pool: FeedPoolSource): RankedFeedCandidate | null => {
-      const list = pools[pool];
-      while (indices[pool] < list.length) {
-        const candidate = list[indices[pool]++];
+    const isPostLike = (c: RankedFeedCandidate) =>
+      c.type === FeedType.POST || c.type === 'repost';
+
+    const takeFromPool = (
+      pool: FeedPoolSource,
+      onlyFresh: boolean,
+    ): RankedFeedCandidate | null => {
+      const list = pools[pool] ?? [];
+      for (const candidate of list) {
         if (cursor && !this.isBeforeCursor(candidate, cursor)) continue;
-
-        const isPost =
-          candidate.type === FeedType.POST || candidate.type === 'repost';
-        if (isPost && seenPostIds.has(candidate.id)) continue;
-
+        if (isPostLike(candidate) && usedPostIds.has(candidate.id)) continue;
+        if (onlyFresh && !this.isFreshForViewer(candidate, seenMap)) continue;
         return candidate;
       }
       return null;
@@ -229,18 +277,14 @@ export class FeedRankingService {
       candidate: RankedFeedCandidate,
       slot: FeedPoolSource,
     ): boolean => {
-      const isPost =
-        candidate.type === FeedType.POST || candidate.type === 'repost';
-      if (!isPost) return true;
+      if (!isPostLike(candidate)) return true;
 
       const existingIdx = result.findIndex(
-        (r) =>
-          (r.type === FeedType.POST || r.type === 'repost') &&
-          r.id === candidate.id,
+        (r) => isPostLike(r) && r.id === candidate.id,
       );
 
       if (existingIdx === -1) {
-        seenPostIds.add(candidate.id);
+        usedPostIds.add(candidate.id);
         return true;
       }
 
@@ -263,26 +307,48 @@ export class FeedRankingService {
       return false;
     };
 
-    let slotIdx = 0;
-    let safety = 0;
-    const maxIterations = limit * FEED_SLOT_TEMPLATE.length * 2;
+    const fillPhase = (onlyFresh: boolean) => {
+      let slotIdx = 0;
+      let safety = 0;
+      const maxIterations = limit * templateLen * 3;
+      let idleRounds = 0;
 
-    while (result.length < limit && safety < maxIterations) {
-      safety++;
-      const slot = FEED_SLOT_TEMPLATE[slotIdx % FEED_SLOT_TEMPLATE.length];
-      slotIdx++;
+      while (result.length < limit && safety < maxIterations) {
+        safety++;
+        const slot = FEED_SLOT_TEMPLATE[(slotOffset + slotIdx) % templateLen];
+        slotIdx++;
 
-      let candidate = takeFromPool(slot);
+        let candidate = takeFromPool(slot, onlyFresh);
 
-      if (!candidate && slot !== 'discovery') {
-        candidate = takeFromPool('discovery');
+        // Prefer another fresh source over inserting seen early.
+        if (!candidate && slot !== 'discovery') {
+          candidate = takeFromPool('discovery', onlyFresh);
+        }
+        if (!candidate && slot !== 'following' && onlyFresh) {
+          candidate = takeFromPool('following', onlyFresh);
+        }
+        if (!candidate && slot !== 'repost' && onlyFresh) {
+          candidate = takeFromPool('repost', onlyFresh);
+        }
+
+        if (!candidate) {
+          idleRounds++;
+          // One full template with nothing usable → inventory for this phase is done.
+          if (idleRounds >= templateLen) break;
+          continue;
+        }
+
+        idleRounds = 0;
+        if (resolveDedup(candidate, slot)) {
+          result.push(candidate);
+        }
       }
+    };
 
-      if (!candidate) break;
-
-      if (resolveDedup(candidate, slot)) {
-        result.push(candidate);
-      }
+    // Unseen / fresh first, then recycle seen for continuous scrolling.
+    fillPhase(true);
+    if (result.length < limit) {
+      fillPhase(false);
     }
 
     return result;
