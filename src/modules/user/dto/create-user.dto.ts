@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsString } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
 import { UserCreateOptions } from '../interfaces/user.interfaces';
 
 export class CreateUserDto {
@@ -19,4 +19,8 @@ export class CreateUserDto {
 
   @IsString()
   password: string;
+
+  @IsOptional()
+  @IsString()
+  appleId?: string;
 }

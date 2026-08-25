@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { ConfigModule } from '@nestjs/config';
 import googleOauthConfig from '../../config/google-oauth.config';
 import tiktokOauthConfig from '../../config/tiktok-oauth.config';
+import appleOauthConfig from '../../config/apple-oauth.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/modules/user/entity/user.entity';
 import { JwtModule } from '@nestjs/jwt';
@@ -14,10 +15,12 @@ import { AccountActivityModule } from '../account-activity/account-activity.modu
 import { UserModule } from '../user/user.module';
 import { BullModule } from '@nestjs/bullmq';
 import { JobQueue } from 'src/common/enums/jobs.enum';
+import { AppleAuthService } from './apple-auth.service';
 
 @Module({
   providers: [
     AuthService,
+    AppleAuthService,
     LocalStrategy,
     GoogleStrategy,
     JwtStrategy,
@@ -26,6 +29,7 @@ import { JobQueue } from 'src/common/enums/jobs.enum';
   imports: [
     ConfigModule.forFeature(googleOauthConfig),
     ConfigModule.forFeature(tiktokOauthConfig),
+    ConfigModule.forFeature(appleOauthConfig),
     TypeOrmModule.forFeature([User]),
     JwtModule.register({}),
     AccountActivityModule,

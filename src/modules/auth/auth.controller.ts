@@ -28,6 +28,7 @@ import {
   ResetPasswordDto,
 } from './dto/password-recovery.dto';
 import { GoogleSignInDto } from './dto/google-sign-in.dto';
+import { AppleSignInDto } from './dto/apple-sign-in.dto';
 import { Public } from 'src/common/decorators/public.decorator';
 import { GoogleAuthGuard } from 'src/common/guards/google-auth.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -59,6 +60,42 @@ export class AuthController {
   @ApiOperation({ summary: 'Google OAuth callback (web)' })
   async googleWebCallback(@Req() req, @Res() res: Response) {
     await this.authService.handleGoogleCallback(req.user, res);
+  }
+
+  @Post('/apple')
+  @ApiOperation({
+    summary: 'Sign in with Apple identity token (mobile / Apple JS)',
+  })
+  @ApiBody({ type: AppleSignInDto })
+  async appleSignIn(@Body() appleSignInDto: AppleSignInDto) {
+    return this.authService.signInWithApple(appleSignInDto);
+  }
+
+  @Public()
+  @Get('apple/web')
+  @ApiOperation({ summary: 'Start Apple OAuth (web)' })
+  appleWebLogin(@Res() res: Response) {
+    this.authService.startAppleWebLogin(res);
+  }
+
+  @Public()
+  @Post('apple/web/callback')
+  @ApiOperation({
+    summary: 'Apple OAuth callback (web, form_post from Apple)',
+  })
+  async appleWebCallback(
+    @Body()
+    body: {
+      code?: string;
+      id_token?: string;
+      state?: string;
+      user?: string;
+      error?: string;
+    },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    await this.authService.handleAppleWebCallback(body, req, res);
   }
 
   @Post('/signup')

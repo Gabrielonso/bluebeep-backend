@@ -22,6 +22,7 @@ export enum UserCreateOptions {
   EMAIL_AND_PASSWORD = 'email_and_password',
   GOOGLE = 'google',
   TIKTOK = 'tiktok',
+  APPLE = 'apple',
 }
 
 export enum UserAudienceAccessOptions {
