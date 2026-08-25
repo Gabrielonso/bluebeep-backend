@@ -157,8 +157,7 @@ export class FeedService {
     const enrichedMedias = medias
       ?.filter(
         (item) =>
-          item.media &&
-          this.isFeedMediaVisible(item.media, viewerId, ownerId),
+          item.media && this.isFeedMediaVisible(item.media, viewerId, ownerId),
       )
       .map((item) => ({
         ...item,
@@ -465,11 +464,7 @@ export class FeedService {
     total: number,
     options: HydrateFeedOptions = {},
   ) {
-    const {
-      repostsByPostId,
-      seenPostMap,
-      includeReposts = true,
-    } = options;
+    const { repostsByPostId, seenPostMap, includeReposts = true } = options;
     const postIds = [
       ...new Set(
         rows
@@ -1017,6 +1012,7 @@ export class FeedService {
       pools,
       limit,
       decodedCursor,
+      { seenMap, seed },
     );
     const rows = this.feedRankingService.toRawFeedRows(merged);
 
