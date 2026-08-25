@@ -7,6 +7,7 @@ import { HttpExceptionFilter } from 'src/common/filters/http-exception.filter';
 import { AllExceptionsFilter } from 'src/common/filters/all-exception.filter';
 import { ConfigureSwagger } from './config/swagger-config';
 import { RedisIoAdapter } from './realtime/redis-io.adapter';
+import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
@@ -17,6 +18,12 @@ async function bootstrap() {
   const redisIoAdapter = new RedisIoAdapter(app, configService);
   await redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
+
+  const parseCookies =
+    typeof cookieParser === 'function'
+      ? cookieParser
+      : (cookieParser as { default: typeof cookieParser }).default;
+  app.use(parseCookies());
 
   useContainer(app.select(AppModule), { fallbackOnErrors: true });
   app.useGlobalPipes(

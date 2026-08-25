@@ -27,6 +27,7 @@ import { generateOtp } from 'src/common/utils/globals';
 import { VerifyEmailDto } from './dto/user-verification.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { GoogleSignInDto } from './dto/google-sign-in.dto';
+import { AppleSignInDto } from './dto/apple-sign-in.dto';
 import { InvalidCredentialsExceptions } from '../../common/exceptions/invalid-credentials.exception';
 import {
   ChangePasswordDto,
@@ -44,6 +45,8 @@ import { Queue } from 'bullmq';
 import { JobQueue, JobType } from 'src/common/enums/jobs.enum';
 import { OAuth2Client } from 'google-auth-library';
 import googleOauthConfig from 'src/config/google-oauth.config';
+import appleOauthConfig from 'src/config/apple-oauth.config';
+import { AppleAuthService } from './apple-auth.service';
 
 const EMAIL_TEMPLATES = {
   VERIFY_EMAIL_OTP:
@@ -81,6 +84,9 @@ export class AuthService {
     private readonly emailQueue: Queue,
     @Inject(googleOauthConfig.KEY)
     private readonly googleConfiguration: ConfigType<typeof googleOauthConfig>,
+    @Inject(appleOauthConfig.KEY)
+    private readonly appleConfiguration: ConfigType<typeof appleOauthConfig>,
+    private readonly appleAuthService: AppleAuthService,
   ) {
     const alphabet = '0123456789';
     this.nanoid = customAlphabet(alphabet, 16);
@@ -210,6 +216,231 @@ export class AuthService {
 
     const separator = frontendRedirectURL.includes('?') ? '&' : '?';
     res.redirect(`${frontendRedirectURL}${separator}token=${data.token}`);
+  }
+
+  /**
+   * Find or create a user for Apple Sign In.
+   * Prefer appleId (stable sub); fall back to email link on first login.
+   */
+  async validateAppleUser(params: {
+    appleId: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<User> {
+    const { appleId, email, firstName, lastName } = params;
+
+    const byAppleId = await this.userService.findByAppleId(appleId);
+    if (byAppleId) return byAppleId;
+
+    if (email) {
+      const byEmail = await this.userService.findByEmail(email);
+      if (byEmail) {
+        const linked = await this.userService.linkAppleId(byEmail.id, appleId);
+        return linked ?? byEmail;
+      }
+
+      return await this.userService.create({
+        email,
+        firstName: firstName?.trim() || 'Apple',
+        lastName: lastName?.trim() || 'User',
+        password: '',
+        createOption: UserCreateOptions.APPLE,
+        profilePicture: '',
+        appleId,
+      });
+    }
+
+    throw new UnauthorizedException(
+      'Apple account email is missing. Sign in with Apple again and share your email, or use an account that was previously linked.',
+    );
+  }
+
+  async signInWithApple(appleSignInDto: AppleSignInDto) {
+    const { identityToken, firstName, lastName } = appleSignInDto;
+
+    if (!this.appleConfiguration.audiences?.length) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: 'Apple sign-in is not configured',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const payload =
+      await this.appleAuthService.verifyIdentityToken(identityToken);
+
+    const emailUnverified =
+      payload.email_verified === false || payload.email_verified === 'false';
+
+    if (payload.email && emailUnverified) {
+      throw new UnauthorizedException(
+        'Apple account email is missing or not verified',
+      );
+    }
+
+    const user = await this.validateAppleUser({
+      appleId: payload.sub,
+      email: payload.email,
+      firstName,
+      lastName,
+    });
+
+    return this.completeAppleLogin(user);
+  }
+
+  private async completeAppleLogin(user: User) {
+    const account = await this.userRepo.findOne({
+      where: { id: user.id },
+      select: [
+        'id',
+        'email',
+        'role',
+        'verified',
+        'firstName',
+        'lastName',
+        'dob',
+        'phoneCode',
+        'phoneNumber',
+        'status',
+        'deletedAt',
+        'profilePicture',
+        'username',
+      ],
+      withDeleted: true,
+    });
+
+    if (!account) {
+      throw new UnauthorizedException('User account not found');
+    }
+
+    if (account.deletedAt) {
+      throw new UnauthorizedException(
+        'This account might have been deleted or deactivated. Please contact the admin if you wish to resolve this.',
+      );
+    }
+
+    if (![UserStatusEnum.ACTIVATED].includes(account.status)) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.UNAUTHORIZED,
+          message: `Your user account has being ${account.status}. Please contact the admin`,
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    await this.accountActivityService.log({
+      userId: account.id,
+      action: 'user.logged-in',
+      metadata: { userId: account.id, type: 'apple-login' },
+    });
+
+    const { token } = await this.getTokens(account);
+    const { deletedAt: _deletedAt, ...rest } = account;
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Successfully logged in',
+      data: {
+        user: rest,
+        token,
+      },
+    };
+  }
+
+  startAppleWebLogin(res: Response) {
+    const state = this.nanoid(24);
+    res.cookie('apple_oauth_state', state, {
+      maxAge: 10 * 60 * 1000,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV !== 'development',
+    });
+    const url = this.appleAuthService.buildAuthorizeUrl(state);
+    res.redirect(url);
+  }
+
+  async handleAppleWebCallback(
+    body: {
+      code?: string;
+      id_token?: string;
+      state?: string;
+      user?: string;
+      error?: string;
+    },
+    req: { cookies?: Record<string, string> },
+    res: Response,
+  ) {
+    if (body.error) {
+      throw new UnauthorizedException(`Apple sign-in failed: ${body.error}`);
+    }
+
+    const cookieState = req.cookies?.apple_oauth_state;
+    if (body.state && cookieState && body.state !== cookieState) {
+      throw new UnauthorizedException('Invalid Apple OAuth state');
+    }
+
+    let identityToken = body.id_token;
+    if (!identityToken && body.code) {
+      const tokens = await this.appleAuthService.exchangeAuthorizationCode(
+        body.code,
+      );
+      identityToken = tokens.id_token;
+    }
+
+    if (!identityToken) {
+      throw new UnauthorizedException(
+        'Apple callback missing id_token and authorization code',
+      );
+    }
+
+    let firstName: string | undefined;
+    let lastName: string | undefined;
+    if (body.user) {
+      try {
+        const parsed = JSON.parse(body.user) as {
+          name?: { firstName?: string; lastName?: string };
+        };
+        firstName = parsed.name?.firstName;
+        lastName = parsed.name?.lastName;
+      } catch {
+        // Apple user JSON is optional / first-login only
+      }
+    }
+
+    const payload =
+      await this.appleAuthService.verifyIdentityToken(identityToken);
+
+    const user = await this.validateAppleUser({
+      appleId: payload.sub,
+      email: payload.email,
+      firstName,
+      lastName,
+    });
+
+    const loginResult = await this.completeAppleLogin(user);
+    const frontendRedirectURL =
+      this.appleConfiguration.frontendRedirectURL ??
+      this.configService.get<string>('APPLE_FRONTEND_REDIRECT_URL');
+
+    if (!frontendRedirectURL) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: 'Apple frontend redirect URL is not configured',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    res.clearCookie('apple_oauth_state');
+    const separator = frontendRedirectURL.includes('?') ? '&' : '?';
+    res.redirect(
+      `${frontendRedirectURL}${separator}token=${loginResult.data.token}`,
+    );
   }
 
   handleTikTokLogin(res: Response) {

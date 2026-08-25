@@ -155,6 +155,14 @@ export class User {
   createdWith: UserCreateOptions;
 
   @Column({
+    name: 'apple_id',
+    type: 'text',
+    unique: true,
+    nullable: true,
+  })
+  appleId?: string | null;
+
+  @Column({
     name: 'user_ref_id',
     type: 'text',
     unique: true,

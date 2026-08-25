@@ -13,7 +13,10 @@ import { User } from './entity/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { UserQueryFilterDto } from './dto/user-query-filter.dto';
-import { baseUsername, normalizeUsername } from 'src/common/utils/utilityFunctions';
+import {
+  baseUsername,
+  normalizeUsername,
+} from 'src/common/utils/utilityFunctions';
 import { hash } from 'bcryptjs';
 import { customAlphabet } from 'nanoid';
 import { Follow } from 'src/modules/engagements/entities/follow.entity';
@@ -146,8 +149,14 @@ export class UserService {
   }
 
   async create(createUserDto: CreateUserDto) {
-    const { firstName, lastName, createOption, email, profilePicture } =
-      createUserDto;
+    const {
+      firstName,
+      lastName,
+      createOption,
+      email,
+      profilePicture,
+      appleId,
+    } = createUserDto;
     try {
       return await this.dataSource.manager.transaction(
         async (entityManager) => {
@@ -156,7 +165,7 @@ export class UserService {
           let finalUsername: string = '';
           while (!unique) {
             const randNum = this.nanoid(5);
-            const base = baseUsername(firstName, lastName);
+            const base = baseUsername(firstName || 'user', lastName || 'apple');
             const username = `${base}${randNum}`;
 
             const existingUserName = await userRepo.findOne({
@@ -175,6 +184,7 @@ export class UserService {
             verified: true,
             profilePicture,
             username: finalUsername,
+            appleId: appleId ?? null,
           });
           return await userRepo.save(user);
         },
@@ -435,6 +445,15 @@ export class UserService {
     return this.userRepository.findOne({ where: { email } });
   }
 
+  findByAppleId(appleId: string) {
+    return this.userRepository.findOne({ where: { appleId } });
+  }
+
+  async linkAppleId(userId: string, appleId: string) {
+    await this.userRepository.update({ id: userId }, { appleId });
+    return this.userRepository.findOne({ where: { id: userId } });
+  }
+
   async deleteUserAccount(id: string) {
     const user = await this.userRepository.findOne({ where: { id } });
     if (user?.profilePicture) {
@@ -452,7 +471,9 @@ export class UserService {
     return hash(password, 10);
   }
 
-  private async cleanupProfilePicture(profilePictureUrl: string): Promise<void> {
+  private async cleanupProfilePicture(
+    profilePictureUrl: string,
+  ): Promise<void> {
     try {
       await this.mediaDeletionService.deleteOrphanDeliveryUrl(
         profilePictureUrl,
