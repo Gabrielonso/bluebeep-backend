@@ -73,6 +73,8 @@ type FeedItem = {
   severity?: AbuseReportSeverity | string;
   summary?: string;
   reportedUserId?: string;
+  targetType?: string | null;
+  targetId?: string | null;
   assigneeId?: string | null;
   slaDeadline?: string;
   href?: string;
@@ -1061,6 +1063,8 @@ export class CommandCenterService {
       severity: r.severity,
       summary: r.summary,
       reportedUserId: r.reportedUserId,
+      targetType: r.targetType ?? undefined,
+      targetId: r.targetId ?? undefined,
       assigneeId: r.assigneeId,
       slaDeadline: r.slaDeadline.toISOString(),
       href: `/admin/trust-queue/reports/${r.id}`,

@@ -9,6 +9,7 @@ import {
 import { AbuseReportResolutionOutcome } from '../enums/abuse-report-resolution.enum';
 import { AbuseReportSeverity } from '../enums/abuse-report-severity.enum';
 import { AbuseReportStatus } from '../enums/abuse-report-status.enum';
+import { AbuseReportTargetType } from '../enums/abuse-report-target-type.enum';
 import { AbuseReportType } from '../enums/abuse-report-type.enum';
 
 @Entity('abuse_reports')
@@ -19,6 +20,7 @@ import { AbuseReportType } from '../enums/abuse-report-type.enum';
 @Index(['createdAt'])
 @Index(['publicId'], { unique: true })
 @Index(['status', 'slaDeadline'])
+@Index(['targetType', 'targetId'])
 export class AbuseReport {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -31,6 +33,18 @@ export class AbuseReport {
 
   @Column({ name: 'reported_user_id', type: 'uuid' })
   reportedUserId: string;
+
+  @Column({
+    name: 'target_type',
+    type: 'enum',
+    enum: AbuseReportTargetType,
+    enumName: 'abuse_report_target_type_enum',
+    nullable: true,
+  })
+  targetType: AbuseReportTargetType | null;
+
+  @Column({ name: 'target_id', type: 'uuid', nullable: true })
+  targetId: string | null;
 
   @Column({
     type: 'enum',
