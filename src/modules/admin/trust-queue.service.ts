@@ -159,6 +159,8 @@ export class TrustQueueService {
       severity: r.severity,
       status: r.status,
       summary: r.summary,
+      targetType: r.targetType,
+      targetId: r.targetId,
       submittedAt: r.createdAt.toISOString(),
       slaDeadline: r.slaDeadline.toISOString(),
       reporter: this.mapUserBrief(userMap.get(r.reporterId)),
@@ -268,6 +270,9 @@ export class TrustQueueService {
       status: report.status,
       summary: report.summary,
       description: report.description,
+      target: report.targetType
+        ? { type: report.targetType, id: report.targetId }
+        : null,
       submittedAt: report.createdAt.toISOString(),
       urgency: {
         severity: report.severity,
@@ -282,6 +287,8 @@ export class TrustQueueService {
         },
       },
       evidence: {
+        targetType: report.targetType,
+        targetId: report.targetId,
         roomKey: report.roomKey,
         liveStreamId: report.liveStreamId,
         viewerCount: report.viewerCount,

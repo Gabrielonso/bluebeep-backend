@@ -13,14 +13,37 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { AbuseReportSeverity } from '../enums/abuse-report-severity.enum';
+import { AbuseReportTargetType } from '../enums/abuse-report-target-type.enum';
 import { AbuseReportType } from '../enums/abuse-report-type.enum';
 
 export class CreateReportDto {
   @ApiProperty({ description: 'User being reported' })
   @IsUUID()
   reportedUserId: string;
+
+  @ApiPropertyOptional({
+    enum: AbuseReportTargetType,
+    description:
+      'Content the report is about. Must be sent together with targetId.',
+  })
+  @ValidateIf(
+    (o: CreateReportDto) => o.targetType != null || o.targetId != null,
+  )
+  @IsEnum(AbuseReportTargetType)
+  targetType?: AbuseReportTargetType;
+
+  @ApiPropertyOptional({
+    description:
+      'ID of the post, comment, thought, status, livestream, message, or ad. Must be sent together with targetType.',
+  })
+  @ValidateIf(
+    (o: CreateReportDto) => o.targetType != null || o.targetId != null,
+  )
+  @IsUUID()
+  targetId?: string;
 
   @ApiProperty({ enum: AbuseReportType })
   @IsEnum(AbuseReportType)

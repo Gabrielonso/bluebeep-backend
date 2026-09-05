@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Google Sign-In Test</title>
+  </head>
+  <body>
+    <h1>Google Web Sign-In</h1>
+    <button id="btn">Continue with Google</button>
+    <pre id="out"></pre>
+
+    <script>
+      const API = 'http://localhost:4001/v1';
+
+      const out = document.getElementById('out');
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+
+      if (token) {
+        out.textContent = 'Logged in!\n\ntoken:\n' + token;
+        // optional: clean URL
+        // history.replaceState({}, '', '/');
+        console.log(token, '<<==token');
+        localStorage.setItem('token', token);
+      } else {
+        out.textContent = 'Not logged in yet. Click the button.';
+      }
+
+      document.getElementById('btn').onclick = () => {
+        // Full-page redirect — required for this backend flow
+        window.location.href = `${API}/auth/google/web`;
+      };
+    </script>
+  </body>
+</html>

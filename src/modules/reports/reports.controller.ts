@@ -12,7 +12,10 @@ export class ReportsController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  @ApiOperation({ summary: 'File an abuse / trust report against a user' })
+  @ApiOperation({
+    summary:
+      'File an abuse / trust report against a user, optionally for a post, comment, or other content',
+  })
   @ApiBody({ type: CreateReportDto })
   createReport(@Body() dto: CreateReportDto, @Req() req) {
     return this.reportsService.createReport(dto, req.user.id);
