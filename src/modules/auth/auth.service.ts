@@ -47,6 +47,7 @@ import { OAuth2Client } from 'google-auth-library';
 import googleOauthConfig from 'src/config/google-oauth.config';
 import appleOauthConfig from 'src/config/apple-oauth.config';
 import { AppleAuthService } from './apple-auth.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 const EMAIL_TEMPLATES = {
   VERIFY_EMAIL_OTP:
@@ -87,6 +88,7 @@ export class AuthService {
     @Inject(appleOauthConfig.KEY)
     private readonly appleConfiguration: ConfigType<typeof appleOauthConfig>,
     private readonly appleAuthService: AppleAuthService,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     const alphabet = '0123456789';
     this.nanoid = customAlphabet(alphabet, 16);
@@ -1153,6 +1155,7 @@ export class AuthService {
   }
 
   private async getTokens(user: User): Promise<JWTTokens> {
+    this.eventEmitter.emit('auth.tokens.issued', { userId: user.id });
     const [token] = await Promise.all([
       this.jwtService.sign(
         { id: user.id, email: user.email, role: user.role },

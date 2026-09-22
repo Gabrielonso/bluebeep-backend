@@ -8,11 +8,12 @@ import { CommandCenterService } from './command-center.service';
 import { CommandCenterAttentionUsersDto } from './dtos/command-center-attention-users.dto';
 import { CommandCenterFeedDto } from './dtos/command-center-feed.dto';
 import { CommandCenterRangeDto } from './dtos/command-center-range.dto';
+import { AdminMembershipGuard } from './access/guards/admin-membership.guard';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('admin/command-center')
-@UseGuards(JwtAuthGuard, RoleGuard)
+@UseGuards(JwtAuthGuard, RoleGuard, AdminMembershipGuard)
 @Roles([UserRoles.ADMIN, UserRoles.SUPER_ADMIN])
 export class CommandCenterController {
   constructor(private readonly commandCenterService: CommandCenterService) {}

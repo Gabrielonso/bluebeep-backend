@@ -26,11 +26,12 @@ import {
   TrustQueueResolveDto,
 } from '../dtos/trust-queue-actions.dto';
 import { AdminRiskEngineService } from './admin-risk-engine.service';
+import { AdminMembershipGuard } from '../access/guards/admin-membership.guard';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('admin/risk-engine')
-@UseGuards(JwtAuthGuard, RoleGuard)
+@UseGuards(JwtAuthGuard, RoleGuard, AdminMembershipGuard)
 @Roles([UserRoles.ADMIN, UserRoles.SUPER_ADMIN])
 export class AdminRiskEngineController {
   constructor(private readonly riskEngineService: AdminRiskEngineService) {}

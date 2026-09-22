@@ -1,0 +1,27 @@
+export const PLATFORM_SETTINGS_ID = 1;
+
+export const DEFAULT_PLATFORM_SETTINGS = {
+  id: PLATFORM_SETTINGS_ID,
+  platformName: 'Bluebeep',
+  logoUrl: null as string | null,
+  supportEmail: null as string | null,
+  supportPhone: null as string | null,
+  emailNotificationsEnabled: false,
+  pushNotificationsEnabled: true,
+  smsNotificationsEnabled: false,
+  privacyPolicy: '',
+  require2fa: true,
+  sessionTimeoutMinutes: 30,
+  ipAllowlistEnabled: false,
+  ipAllowlist: [] as string[],
+  loginAttemptAlertsEnabled: true,
+  notifyHighSeverityRisk: true,
+  notifyNewDispute: true,
+  notifyPayoutDigest: true,
+  notifyFailedLogin: true,
+  notifyWeeklyReport: false,
+  autoFreezeWalletRiskScore: 85,
+  autoEscalateDisputeAbove: 5000,
+  payoutManualReviewThreshold: 10000,
+  giftRingDetectionWindowHours: 2,
+};

@@ -30,6 +30,11 @@ import { CallSession } from 'src/modules/calls/entities/call-session.entity';
 import { LiveStream } from 'src/modules/live-streams/entities/live-stream.entity';
 import { AbuseReport } from 'src/modules/reports/entities/abuse-report.entity';
 import { AbuseReportNote } from 'src/modules/reports/entities/abuse-report-note.entity';
+import { AdminMembership } from 'src/modules/admin/access/entities/admin-membership.entity';
+import { AdminPermission } from 'src/modules/admin/access/entities/admin-permission.entity';
+import { AdminRolePermission } from 'src/modules/admin/access/entities/admin-role-permission.entity';
+import { PlatformSettings } from 'src/modules/admin/access/entities/platform-settings.entity';
+import { AdminAuditEvent } from 'src/modules/admin/access/entities/admin-audit-event.entity';
 dotenv.config();
 
 // DB_SSL can hold either the PEM certificate itself or a path to a .pem file
@@ -89,6 +94,11 @@ export const ormConfig: DataSourceOptions = {
     LiveStream,
     AbuseReport,
     AbuseReportNote,
+    AdminMembership,
+    AdminPermission,
+    AdminRolePermission,
+    PlatformSettings,
+    AdminAuditEvent,
   ],
   migrations: [],
 };

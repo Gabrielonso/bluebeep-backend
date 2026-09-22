@@ -15,12 +15,13 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRoles } from 'src/common/enums/user-roles.constants';
 import { TextModerationSurface } from 'src/common/moderation/text-moderation.types';
 import { AdminService } from './admin.service';
+import { AdminMembershipGuard } from './access/guards/admin-membership.guard';
 import { TextModerationQueryDto } from './dtos/text-moderation-query.dto';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('admin')
-@UseGuards(JwtAuthGuard, RoleGuard)
+@UseGuards(JwtAuthGuard, RoleGuard, AdminMembershipGuard)
 @Roles([UserRoles.ADMIN, UserRoles.SUPER_ADMIN])
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
