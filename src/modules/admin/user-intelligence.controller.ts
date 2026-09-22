@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RoleGuard } from 'src/common/guards/role.guard';
@@ -6,11 +13,12 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRoles } from 'src/common/enums/user-roles.constants';
 import { UserIntelligenceService } from './user-intelligence.service';
 import { UserIntelligenceQueryDto } from './dtos/user-intelligence-query.dto';
+import { AdminMembershipGuard } from './access/guards/admin-membership.guard';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('admin/user-intelligence')
-@UseGuards(JwtAuthGuard, RoleGuard)
+@UseGuards(JwtAuthGuard, RoleGuard, AdminMembershipGuard)
 @Roles([UserRoles.ADMIN, UserRoles.SUPER_ADMIN])
 export class UserIntelligenceController {
   constructor(

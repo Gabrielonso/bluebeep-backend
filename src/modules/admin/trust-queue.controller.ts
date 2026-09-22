@@ -22,11 +22,12 @@ import {
 } from './dtos/trust-queue-actions.dto';
 import { TrustQueueQueryDto } from './dtos/trust-queue-query.dto';
 import { TrustQueueService } from './trust-queue.service';
+import { AdminMembershipGuard } from './access/guards/admin-membership.guard';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('admin/trust-queue')
-@UseGuards(JwtAuthGuard, RoleGuard)
+@UseGuards(JwtAuthGuard, RoleGuard, AdminMembershipGuard)
 @Roles([UserRoles.ADMIN, UserRoles.SUPER_ADMIN])
 export class TrustQueueController {
   constructor(private readonly trustQueueService: TrustQueueService) {}
